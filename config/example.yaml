@@ -1,0 +1,55 @@
+# An example config file.
+# Please do not edit this and instead make a copy and use that.
+# By default, it will grab config.yaml
+####################################################################
+
+server:
+  # credentials used by the live-transcript-server
+  username: ""
+  password: ""
+
+  # url of the live-transcript-server
+  url: https://example.com
+
+  # true means that it will send the requests to the server url. false means that it will instead save it to a file.
+  # Local file is stored under tmp/{key}/transcript.txt
+  enabled: true
+
+  # While a key is not live, it will wait this many seconds before checking again to see if a stream is live.
+  # If this is too small, then you will get blocked for a day.
+  seconds_between_channel_retry: 20
+
+  # How long each line will be in seconds
+  buffer_size_seconds: 6
+
+  # will save the raw media data to file so that you can debug it. Dump folder is tmp/{key}/dump
+  enable_dump_media: false
+
+transcription:
+  # list of models can be found here https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L12
+  model: turbo
+
+  # cuda or cpu
+  device: cuda
+
+  # float16 when using cuda. int8 when using cpu
+  compute_type: float16
+
+# List of streamers to handle
+streamers:
+  # key used to identify the streamer. Should match the key on the server
+  - key: example
+    # List of urls that will be watched.
+    urls:
+      - https://www.example.com
+      - https://www.example2.com
+
+    # used to enable disable this key. If false, then we skip this key and it's essentially like this key never exists.
+    active: true
+
+    # what type of media do we want to process and send to the server.
+    # Types: none, audio, video
+    # if none, then we download audio but send over nothing
+    # if audio, then we download and send over audio
+    # If video, then we download multimedia video and send that over.
+    media_type: none

@@ -1,3 +1,10 @@
+tmp/
+bin/
+
+# Exclude all configurations except for the example.
+config/*
+!config/example.yaml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
