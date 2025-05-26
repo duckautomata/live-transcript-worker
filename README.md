@@ -61,7 +61,7 @@ _Pros_
 
 _Cons_
 - Audio only
-- Least accurate tags. The worker does not take into account the live latency or if the steam stops in the middle. So, the timestamps could be way off.
+- Least accurate tags. The worker does not take into account the live latency or if the stream stops in the middle. So, the timestamps could be way off.
 
 **MPEG-TS Buffered**
 
@@ -112,16 +112,12 @@ _Cons_
 **NOTE**: This is only required to run the the source code. If you only want to run it and not develop it, then check out the [Docker seciton](#docker)
 
 1. If you plan on using a GPU, download and install the NVIDIA libraries [cuBLAS for CUDA 12](https://developer.nvidia.com/cublas) and [cuDNN 9 for CUDA 12](https://developer.nvidia.com/cudnn) to your system.
-2. Download yt-dlp from their [repo](https://github.com/yt-dlp/yt-dlp#recommended), create a folder `bin/`, and place the executable inside `bin/`. Ensure that it is executable, and is named correctly.
+2. Run `scripts/setup.sh`
 3. Referencing `config/example.yaml`, create `config/config.yaml` and add your specific configurations.
-4. Create a virtual environment `python -m venv .venv` and activate it `source .venv/bin/activate`
-5. Install all dependencies `pip install -r requirements.txt`
-
-You can also run `scripts/setup.sh` to automatically do 2, 4, and 5.
 
 When all of that is done, you can run `scripts/run.sh` to start live-transcript-worker.
 
-If you wish to create more configuration files (example: dev.yaml), then you can specify what config to use by adding the name of the config file as the first argument. Example `python main.py dev.yaml` to use the dev.yaml config.
+If you wish to create more configuration files (example: dev.yaml), then you can specify what config to use by adding the name of the config file as the first argument. Example `scripts/run.sh dev.yaml` to use the dev.yaml config.
 
 ### Debugging/Logging
 
@@ -132,7 +128,7 @@ Logging is set up for the entire program, and everything should be logged. The c
 
 ### Host Requirements
 - NVIDIA gpu to run the larger models. Or a decent cpu to run the smaller models.
-- Intall GPU drivers and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+- Install GPU drivers and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 - Linux system. Either pure linux or WSL if you want to run it on a Windows computer.
 - Docker
 
@@ -168,4 +164,4 @@ The models are not installed in the image. So, on the first start, it will downl
 
 Logs and current state are stored in the `tmp/` folder outside the container. Because of this, state is not lost on restart.
 
-**Note**: the docker container and the source code uses the same `tmp/` and `models` folder to store runtime data. Because of this, it is required that you run either or, not both. If you want to run bot development and a docker image, then use separate folders.
+**Note**: the docker container and the source code uses the same `tmp/` and `models/` folder to store runtime data. Because of this, it is required that you run either or, not both. If you want to run both development and a docker image, then use separate folders.
