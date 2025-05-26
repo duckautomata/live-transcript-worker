@@ -1,5 +1,6 @@
 tmp/
 bin/
+models/
 
 # Exclude all configurations except for the example.
 *.yaml

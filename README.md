@@ -160,8 +160,12 @@ The easiest way to run the docker image is to
 2. create `config.yaml` from the example config file, adding in your specific configurations.
 3. then run `./docker/start.sh`
 
+If there are permission errors and the container cannot write to tmp/, then you first need to run `sudo chmod -R 777 tmp models` to give the container permissions.
+
 Depending on your use case, you can change the configuration variables in `start.sh` to match your needs.
 
 The models are not installed in the image. So, on the first start, it will download the model specified in the config file. However, any subsequent starts will reuse the model since the model folder `model/` is stored outside the container.
 
 Logs and current state are stored in the `tmp/` folder outside the container. Because of this, state is not lost on restart.
+
+**Note**: the docker container and the source code uses the same `tmp/` and `models` folder to store runtime data. Because of this, it is required that you run either or, not both. If you want to run bot development and a docker image, then use separate folders.
