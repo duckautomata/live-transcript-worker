@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
 
 # Setting up app
 WORKDIR /app
+RUN mkdir -p /app/tmp /app/model
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -30,5 +31,9 @@ RUN mkdir -p /app/bin/ && \
 # Copy application files
 COPY main.py main.py
 COPY src src
+
+RUN chown -R 1000:1000 /app
+VOLUME ["/app/tmp", "/app/models"]
+USER 1000
 
 CMD ["python3", "main.py"]

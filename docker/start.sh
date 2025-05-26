@@ -8,14 +8,16 @@
 CONTAINER_NAME="live_transcript_worker"
 TAG="latest"
 RESTART_POLICY="unless-stopped"
-CONFIG_FILE_PATH="./config.yaml"
+CONFIG_FILE_PATH="./config/config.yaml"
 
 if [ -f "$CONFIG_FILE_PATH" ]; then
-    echo "Configuration file '$CONFIG_FILE_PATH' found."
+    echo "Config file '$CONFIG_FILE_PATH' found."
 else
-    echo "Error: Configuration file '$CONFIG_FILE_PATH' does not exist."
+    echo "Error: Config file '$CONFIG_FILE_PATH' does not exist."
     exit 1
 fi
+
+mkdir -p tmp models
 
 echo "Starting container $CONTAINER_NAME"
 docker run \
@@ -23,6 +25,6 @@ docker run \
     --gpus all \
     -d --restart $RESTART_POLICY \
     -v "$CONFIG_FILE_PATH:/app/config/config.yaml:ro" \
-    -v "./docker-tmp:/app/tmp" \
-    -v "./docker-models:/app/models" \
+    -v "./tmp:/app/tmp" \
+    -v "./models:/app/models" \
     duckautomata/live-transcript-worker:$TAG

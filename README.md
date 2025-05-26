@@ -155,14 +155,13 @@ The major version between Worker and Server _should_ remain consistent.
 You can view all tags on [Dockerhub](https://hub.docker.com/r/duckautomata/live-transcript-worker/tags)
 
 ### Running with Docker
-To use run the Docker image:
-1. copy the scripts under [/docker](/docker/) and give them execution `chmod +x *.sh`
-2. copy the example config file [example.yaml](/config/example.yaml)
+The easiest way to run the docker image is to
+1. clone this repo locally
+2. create `config.yaml` from the example config file, adding in your specific configurations.
+3. then run `./docker/start.sh`
 
-Update the config file and scripts to match your use case.
+Depending on your use case, you can change the configuration variables in `start.sh` to match your needs.
 
-The models are not installed in the image. So, on first start, it will download the model specified in the config file. But any subsequent starts will reuse the model since the model folder `model/` is stored outside the container.
+The models are not installed in the image. So, on the first start, it will download the model specified in the config file. However, any subsequent starts will reuse the model since the model folder `model/` is stored outside the container.
 
-Logs and current state is stored in the `tmp/` folder outside the container. Because of this, state is not lost on restart.
-
-It is very important that you do NOT start the Docker container in the same directory as this repo. Since it will map the `tmp/` and the `model/` folder to the container, it will mess with the repo's `tmp/` and `model/` folder.
+Logs and current state are stored in the `tmp/` folder outside the container. Because of this, state is not lost on restart.

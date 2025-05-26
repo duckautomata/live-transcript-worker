@@ -8,7 +8,7 @@
 CONTAINER_NAME="live_transcript_worker"
 TAG="latest"
 RESTART_POLICY="unless-stopped"
-CONFIG_FILE_PATH="./config.yaml"
+CONFIG_FILE_PATH="./config/config.yaml"
 
 if [ -f "$CONFIG_FILE_PATH" ]; then
     echo "Config file '$CONFIG_FILE_PATH' found."
@@ -17,9 +17,11 @@ else
     exit 1
 fi
 
+mkdir -p tmp models
+
 docker stop $NAME
-docker rm $NAME
-docker rmi duckautomata/live-transcript-worker:$TAG
+docker rm -f $NAME
+docker rmi -f duckautomata/live-transcript-worker:$TAG
 docker run \
     --name $CONTAINER_NAME \
     --gpus all \
