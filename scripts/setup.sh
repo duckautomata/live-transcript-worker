@@ -63,6 +63,7 @@ if [ ! -d ".venv" ]; then
     python3 -m venv .venv
     if [ $? -ne 0 ]; then
         echo "Error: Failed to create the virtual environment."
+        rm -rf .venv
         exit 1
     fi
 else

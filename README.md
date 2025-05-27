@@ -105,13 +105,16 @@ _Cons_
 - Python 3.10 or greater
 - FFmpeg
 - NVIDIA gpu to run the larger models. Or a decent cpu to run the smaller models.
-- Linux system. Either pure linux or WSL if you want to run it on a Windows computer.
+- Linux or Windows, but a Linux system is preferred (pure Linux or WSL).
 
 ### Running Source Code
 
 **NOTE**: This is only required to run the the source code. If you only want to run it and not develop it, then check out the [Docker seciton](#docker)
 
-1. If you plan on using a GPU, download and install the NVIDIA libraries [cuBLAS for CUDA 12](https://developer.nvidia.com/cublas) and [cuDNN 9 for CUDA 12](https://developer.nvidia.com/cudnn) to your system.
+1. If you plan on using a GPU, download and install the NVIDIA libraries
+    - [cuBLAS for CUDA 12 via CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
+        >_Note: There are other options for installing cuBLAS. You can find them [here](https://developer.nvidia.com/cublas). But the CUDA Toolkit is the easiest._
+    - [cuDNN 9 for CUDA 12](https://developer.nvidia.com/cudnn)
 2. Run `scripts/setup.sh`
 3. Referencing `config/example.yaml`, create `config/config.yaml` and add your specific configurations.
 
