@@ -53,3 +53,10 @@ streamers:
     # if audio, then we download and send over audio
     # If video, then we download multimedia video and send that over.
     media_type: none
+
+# List of stream id's that should not be transcribed.
+# Useful for when you don't want to transcribe a 24/7 livestream
+# Leave as an empty string, or remove all together if you don't want to blacklist any streams
+id_blacklist:
+- "example-id-1"
+- "example-id-2"

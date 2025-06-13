@@ -93,11 +93,11 @@ class StreamWatcher:
                 time.sleep(1)
                 continue
 
+            id_blacklist = Config.get_id_blacklist_config()
             for url in urls:
                 info: StreamInfoObject = StreamHelper.get_stream_stats(url)
-                if info.stream_id in ["pEJ2WJJH_5U"]:
-                    # blacklisted stream, sleep for an extra minute then continue on to the next url
-                    time.sleep(60)
+                if info.stream_id in id_blacklist:
+                    # blacklisted stream, continue on to the next url
                     continue
 
                 info.key = key

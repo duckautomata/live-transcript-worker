@@ -80,3 +80,12 @@ class Config:
                     return streamer
 
         return {}
+
+    @staticmethod
+    def get_id_blacklist_config() -> list[str]:
+        config_data = Config.get_config()
+        if not config_data:
+            logger.error("Error: Cannot search in empty or invalid configuration.")
+            return []
+        
+        return config_data.get('id_blacklist', [])

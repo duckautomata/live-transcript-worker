@@ -107,7 +107,7 @@ class StreamHelper:
                         return duration_sec
                     
                     return audio_duration
-        except averror.InvalidDataError:
+        except Exception:
             logger.error("[audio_duration] Invalid media data for buffer")
             return 0.0
 
