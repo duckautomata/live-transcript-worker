@@ -1,6 +1,7 @@
 import os
+import signal
 import sys
-import time
+import threading
 import logging
 from datetime import datetime
 
@@ -12,6 +13,8 @@ app_logger = logging.getLogger("src.live_transcript_worker")
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 project_root_dir = os.path.dirname(os.path.abspath(__name__))
 log_path = os.path.join(project_root_dir, "tmp", f"{timestamp}.log")
+
+shutdown_event = threading.Event()
 
 def setup_logging():
     """Logs to both console and file. Console is info and up only. File is debug and up.
@@ -52,9 +55,18 @@ def handle_args():
     Config.config_filename = argument
     Config.get_config()  # Used to verify that we are able to load the config before doing anything else
 
-def main():
-    stream_watcher = StreamWatcher()
+def graceful_shutdown(signum, frame):
+    """Signal handler to initiate a graceful shutdown."""
+    signal_name = signal.Signals(signum).name
+    app_logger.info(f"Received signal {signum} ({signal_name}). Initiating graceful shutdown.")
+    shutdown_event.set()
 
+def main():
+    # Setting up listener to listen to signal events
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    signal.signal(signal.SIGINT, graceful_shutdown)
+
+    stream_watcher = StreamWatcher()
     streamers = Config.get_all_streamers_config()
     for streamer in streamers:
         key = streamer["key"]
@@ -68,11 +80,11 @@ def main():
     stream_watcher.start()
 
     try:
-        while True:
-            time.sleep(3600)
-    except KeyboardInterrupt:
-        app_logger.info("")
-        app_logger.info("Keyboard interrupt detected.")
+        app_logger.info("Application started. Waiting for shutdown signal.")
+        while not shutdown_event.is_set():
+            shutdown_event.wait(timeout=1.0)
+    except Exception as e:
+        app_logger.error(f"An unexpected error occurred: {e}", exc_info=True)
     finally:
         app_logger.info("Stopping all threads")
         stream_watcher.stop()

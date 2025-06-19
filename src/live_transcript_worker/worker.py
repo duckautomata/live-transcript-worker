@@ -198,12 +198,10 @@ class MPEGBufferedWorker(AbstractWorker):
                     should_sleep = True
                     continue
                 buffer_copy = bytes(self.buffer)
-                logger.debug(f"[{info.key}][MPEGBufferedWorker] buffer_len={len(buffer_copy)}, duration={StreamHelper.get_duration(buffer_copy)} seconds")
                 if len(buffer_copy) < min_buffer_size or StreamHelper.get_duration(buffer_copy) < self.buffer_size_seconds:
                     should_sleep = True
                     continue
 
-                logger.info(f"[{info.key}][MPEGBufferedWorker] saving buffer to queue")
                 process_obj = ProcessObject(
                     raw=buffer_copy,
                     audio_start_time=audio_start_time,
