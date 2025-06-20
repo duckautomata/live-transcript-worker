@@ -129,15 +129,19 @@ class StreamWatcher:
         """
         logger.info("[processor] thread starting")
         audio_processor = ProcessAudio(self.ready_event)
+        last_queue_item_time = time.time()
         while not self.stop_event.is_set() or not self.processing_queue.empty() or not self.worker_finished_event.is_set():
             try:
                 item = self.processing_queue.get(timeout=0.5)
-                # raw, audio_start_time, key, media_type = item
+                last_queue_item_time = time.time()
                 audio_processor.process_audio(item)
                 self.processing_queue.task_done()
-                if self.processing_queue.qsize() >= 5:
-                    logger.warning(f"[processor] queue size is getting large: {self.processing_queue.qsize()} >= 5")
+                if self.processing_queue.qsize() >= 10:
+                    logger.warning(f"[processor] queue size is getting large: {self.processing_queue.qsize()} >= 10")
             except Empty:
+                if time.time() - last_queue_item_time > 10 * 60: # 10 minutes
+                    # Model will only be unloaded once. So there is no harm in calling it multiple times.
+                    audio_processor.unload_model()
                 continue
             except Exception as e:
                 logger.error(f"[processor] error in processing thread: {e}")

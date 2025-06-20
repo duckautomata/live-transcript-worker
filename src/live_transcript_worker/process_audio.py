@@ -1,4 +1,5 @@
 import base64
+import gc
 from io import BytesIO
 import logging
 from math import floor
@@ -20,19 +21,35 @@ class ProcessAudio(object):
 
     def __init__(self, ready_event: Event):
         self.storage = Storage()
-        config = Config.get_transcription_config()
-        model = config.get("model", "base")
-        device = config.get("device", "cpu")
-        compute_type = config.get("compute_type", "int8")
-        download_root = "./models"
-        logger.info(f"Loading model {model} with device {device} using type {compute_type}...")
-        self.whisper_model = WhisperModel(
-            model, device, compute_type=compute_type, download_root=download_root
-        )
-        logger.info("Done.")
+        self.whisper_model = None
+        # Used to ensure that the model is downloaded before any other action occur
+        self.load_model()
         ready_event.set()
 
+    def load_model(self):
+        if self.whisper_model is None:
+            config = Config.get_transcription_config()
+            model = config.get("model", "base")
+            device = config.get("device", "cpu")
+            compute_type = config.get("compute_type", "int8")
+            download_root = "./models"
+            logger.info(f"[load_model] Loading model {model} with device {device} using type {compute_type}...")
+            self.whisper_model = WhisperModel(
+                model, device, compute_type=compute_type, download_root=download_root
+            )
+            logger.info("[load_model] Done.")
+
+    def unload_model(self):
+        if self.whisper_model is not None:
+            logger.info("[unload_model] total time since last queue item elapsed 10 minutes. Unloading model...")
+            del self.whisper_model
+            self.whisper_model = None
+            gc.collect()
+            logger.info("[unload_model] Done.")
+
     def process_audio(self, item: ProcessObject):
+        if self.whisper_model is None:
+            self.load_model()
         start_time = time.time()
         with BytesIO(item.raw) as data:
             transcription_start = time.time()
@@ -79,6 +96,8 @@ class ProcessAudio(object):
 
         Returns: None if the audio is too short, or a list of segment tuples (start_time, text)
         """
+        if self.whisper_model is None:
+            self.load_model()
         try:
             segments, info = self.whisper_model.transcribe(
                 data,
