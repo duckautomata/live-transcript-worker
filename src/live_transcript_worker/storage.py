@@ -2,6 +2,7 @@ import base64
 import logging
 import marshal
 import os
+import shutil
 import requests
 from requests.auth import HTTPBasicAuth
 from urllib.parse import quote
@@ -37,7 +38,7 @@ class Storage(metaclass=SingletonMeta):
     def create_paths(self, key: str):
         marshal_path = os.path.dirname(self.__get_marshal_file(key))
         transcript_path = os.path.dirname(self.__get_transcript_file(key))
-        dump_path = os.path.dirname(self.__get_dump_file(key, 0, ""))
+        dump_path = self.__get_dump_folder(key)
         if marshal_path:
             os.makedirs(marshal_path, exist_ok=True)
         if transcript_path:
@@ -75,6 +76,7 @@ class Storage(metaclass=SingletonMeta):
                     f.write(
                         f"Activating stream {info.stream_title} [{info.stream_id}] started at [{info.start_time}]\n"
                     )
+            self.__clear_dump_folder(info.key)
 
         else:
             logger.info(f"[{info.key}][activate] Same stream id. Updating isLive")
@@ -186,7 +188,7 @@ class Storage(metaclass=SingletonMeta):
             logger.debug(f"[{key}][update] successfully wrote {line}")
 
         if self.__enable_dump_media:
-            self.__dump_media(key, last_id + 1, raw_b64_data)
+            self.__dump_media(key, line["id"], raw_b64_data)
 
     def __upload(self, key: str, data):
         """Called when the server is out of sync and we need to reset the servers state.
@@ -220,12 +222,10 @@ class Storage(metaclass=SingletonMeta):
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
         transcript_path = os.path.join(project_root_dir, "tmp", key, "transcript.text")
         return transcript_path
-
-    def __get_dump_file(self, key: str, id: int, media: str):
+    
+    def __get_dump_folder(self, key: str):
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
-        dump_path = os.path.join(
-            project_root_dir, "tmp", key, "dump", f"{media}_{id:04d}.raw"
-        )
+        dump_path = os.path.join(project_root_dir, "tmp", key, "dump")
         return dump_path
 
     def __get_active_id(self, key: str) -> str:
@@ -253,9 +253,11 @@ class Storage(metaclass=SingletonMeta):
     def __dump_media(self, key, line_id: int, raw_b64_data: str):
         """Decodes the base64 media and writes it to a dump folder. Used for debugging"""
         media = self.__file_to_dict(key).get("mediaType", Media.AUDIO)
-        if media == Media.NONE:
-            media = Media.AUDIO
-        dump_path = self.__get_dump_file(key, line_id, media)
+        if media == Media.NONE or len(raw_b64_data) == 0:
+            # no data to dump.
+            return
+        dump_folder = self.__get_dump_folder(key)
+        dump_path = os.path.join(dump_folder, f"{media}_{line_id:04d}.raw")
         try:
             decoded_data = base64.b64decode(raw_b64_data)
             with open(dump_path, "wb") as file:
@@ -265,3 +267,26 @@ class Storage(metaclass=SingletonMeta):
             logger.error(f"[{key}][dump_media] Error writing to file {dump_path}: {e}")
         except Exception as e:
             logger.error(f"[{key}][dump_media] An unexpected error occurred: {e}")
+
+    def __clear_dump_folder(self, key):
+        """Clears the dump folder for the given key. First deletes the folder then recreates it"""
+        dump_folder = self.__get_dump_folder(key)
+        logger.debug(f"[{key}][clear_dump_folder] clearing dump folder {dump_folder}")
+
+        if os.path.exists(dump_folder):
+            try:
+                shutil.rmtree(dump_folder)
+            except OSError as e:
+                logger.error(f"[{key}][clear_dump_folder] Error deleting dump folder {dump_folder}: {e}")
+            except Exception as e:
+                logger.error(f"[{key}][clear_dump_folder] unknown error deleting dump foler {dump_folder}: {e}")
+        
+        # Recreate the empty folder
+        try:
+            os.makedirs(dump_folder)
+        except OSError as e:
+            logger.error(f"[{key}][clear_dump_folder] Error recreating dump folder {dump_folder}: {e}")
+        except Exception as e:
+            logger.error(f"[{key}][clear_dump_folder] unknown error recreating dump foler {dump_folder}: {e}")
+        
+        logger.debug(f"[{key}][clear_dump_folder] successfully cleared dump folder")

@@ -5,9 +5,7 @@ import re
 import subprocess
 import json
 import time
-
 import av
-from av import error as averror
 
 from src.live_transcript_worker.config import Config
 from src.live_transcript_worker.types import Media, StreamInfoObject
@@ -57,6 +55,7 @@ class StreamHelper:
                 # For Twitch, 'timestamp' is the epoch (s) for when the stream started
                 info.is_live = metadata.get("is_live", False)
                 if info.is_live:
+                    logger.debug(f"[stream_stats] Found live stream. id: '{metadata.get("id", "not set")}' title: '{metadata.get("title", "not set")}' release_timestamp: '{metadata.get("release_timestamp", "not set")}' timestamp: '{metadata.get("timestamp", "not set")}'")
                     info.stream_id = metadata.get("id", "Unknown ID")
                     info.stream_title = StreamHelper.remove_date(
                         metadata.get("title", "Unknown Title")
@@ -67,6 +66,7 @@ class StreamHelper:
                         start_time = metadata.get("timestamp", 0)
                     if start_time == 0:
                         start_time = metadata.get("timestamp", time.time())
+                        logger.warning("[stream_stats] start_time is still at 0")
                     info.start_time = str(start_time)
 
             except json.JSONDecodeError:
