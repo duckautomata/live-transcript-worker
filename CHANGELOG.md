@@ -1,8 +1,13 @@
 # latest
-Using version [1.2](#12-2025-06-20)
+Using version [1.3](#13-2025-08-05)
 
 # Major version 1
-Using version [1.2](#12-2025-06-20)
+Using version [1.3](#13-2025-08-05)
+
+## 1.3 (2025-08-05)
+**Changes**
+- Upgraded faster-whisper to 1.2.0
+- Now able to use the newest model distil-large-v3.5 which is the most accurate model.
 
 ## 1.2 (2025-06-20)
 **Changes**

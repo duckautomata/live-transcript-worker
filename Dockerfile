@@ -26,7 +26,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install yt-dlp binary
 RUN mkdir -p /app/bin/ && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/bin/yt-dlp && \
-    chmod a+rx /app/bin/yt-dlp
+    chmod a+rx /app/bin/yt-dlp && \
+    /app/bin/yt-dlp -U
 
 # Copy application files
 COPY main.py main.py

@@ -27,7 +27,7 @@ server:
 
 transcription:
   # list of models can be found here https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L12
-  model: turbo
+  model: distil-large-v3.5
 
   # cuda or cpu
   device: cuda
