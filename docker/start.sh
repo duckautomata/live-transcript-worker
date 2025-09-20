@@ -8,8 +8,8 @@
 IMAGE_NAME="duckautomata/live-transcript-worker"
 TAG="latest"
 CONTAINER_NAME="live_transcript_worker"
-RESTART_POLICY="unless-stopped"
-CONFIG_FILE_PATH="./config/config.yaml"
+RESTART_POLICY="always"
+CONFIG_FILE_PATH="./config.yaml"
 
 # --- Docker Command ---
 # Check if the user can run docker without sudo
