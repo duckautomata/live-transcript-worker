@@ -103,9 +103,7 @@ class StreamWatcher:
                 info.key = key
                 info.media_type = StreamHelper.get_media_type(url, key)
                 if info.is_live:
-                    logger.info(
-                        f'[{key}][watcher] stream "{info.stream_title}" started at {info.start_time} using media {info.media_type}'
-                    )
+                    logger.info(f'[{key}][watcher] stream "{info.stream_title}" id {info.stream_id} started at {info.start_time} using media {info.media_type}')
                     self.storage.activate(info=info)
                     last_stream_id = info.stream_id
                     worker.start(info)

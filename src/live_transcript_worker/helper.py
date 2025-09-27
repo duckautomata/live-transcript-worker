@@ -55,11 +55,6 @@ class StreamHelper:
                 # For Twitch, 'timestamp' is the epoch (s) for when the stream started
                 info.is_live = metadata.get("is_live", False)
                 if info.is_live:
-                    id = metadata.get('id', 'not set')
-                    title = metadata.get('title', 'not set')
-                    release_timestamp = metadata.get('release_timestamp', 'not set')
-                    timestamp = metadata.get('timestamp', 'not set')
-                    logger.debug(f"[stream_stats] Found live stream. id: '{id}' title: '{title}' release_timestamp: '{release_timestamp}' timestamp: '{timestamp}'")
                     info.stream_id = metadata.get("id", "Unknown ID")
                     info.stream_title = StreamHelper.remove_date(
                         metadata.get("title", "Unknown Title")
