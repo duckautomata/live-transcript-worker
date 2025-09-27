@@ -1,25 +1,24 @@
 # NVIDIA base image
-ARG CUDA_VERSION=12.3.2
-ARG CUDNN_VERSION=9
-ARG OS_VERSION=ubuntu22.04
-FROM nvidia/cuda:${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime-${OS_VERSION}
+FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
 # Install Python and other system dependencies and creating symlink for python and pip
 RUN apt-get update && apt-get install -y \
+    python3 \
     python3-pip \
+    python3.12-venv \
     ffmpeg \
     curl \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    && ln -sf /usr/bin/pip3 /usr/bin/pip
+    && rm -rf /var/lib/apt/lists/*
 
 # Setting up app
 WORKDIR /app
 RUN mkdir -p /app/tmp /app/model
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

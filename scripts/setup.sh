@@ -4,87 +4,77 @@
 #
 # Usage: ./scripts/setup.sh
 
-if [[ "$PWD" == */scripts ]]; then
-    echo "Error: This script must be run from the project's root directory, not from within the 'scripts' subdirectory."
-    echo "You are currently in: $PWD"
-    echo "Please change to the parent directory (e.g., 'cd ..') and run the script like this: ./scripts/setup.sh"
-    exit 1
-fi
+# Exit immediately if a command exits with a non-zero status.
+set -e
 
-# --- Verification Section ---
+# --- Path and Environment Setup ---
+# This ensures the script always runs from the project's root directory.
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
+cd "$PROJECT_ROOT" || exit 1
 
-echo ""
-echo "----------------------------------------"
+echo "Running setup from project root: $PWD"
 
-echo "### Verifying FFmpeg installation... ###"
-if command -v ffmpeg &> /dev/null; then
-    echo "FFmpeg is installed."
+# --- Prerequisite Verification ---
+echo -e "\nVerifying required tools..."
+
+# Find a suitable Python command
+if command -v python3.12 &>/dev/null; then
+    PYTHON_CMD="python3.12"
+elif command -v python3 &>/dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &>/dev/null; then
+    PYTHON_CMD="python"
 else
-    echo "Error: FFmpeg is not installed. Please install it to continue."
+    echo "Error: Python is not installed. Please install Python 3."
     exit 1
 fi
+echo "Python found ($PYTHON_CMD)"
 
-# --- Tool Download Section ---
+# Check if the venv module is installed for the found Python interpreter
+if ! "$PYTHON_CMD" -m venv --help &>/dev/null; then
+    echo "Error: The Python 'venv' module is missing or broken."
+    echo "   On Debian/Ubuntu, try: sudo apt install python3-venv"
+    echo "   On Fedora/CentOS, try: sudo dnf install python3-virtualenv"
+    exit 1
+fi
+echo "Python venv module found"
 
-echo "### Downloading yt-dlp... ###"
-# Create the bin directory if it doesn't exist
+# Check for other necessary tools
+for tool in ffmpeg curl; do
+    if ! command -v "$tool" &>/dev/null; then
+        echo "Error: '$tool' is not installed. Please install it to continue."
+        exit 1
+    fi
+    echo "✔️ $tool found"
+done
+
+# --- Tool Download ---
+echo -e "\nDownloading yt-dlp..."
 mkdir -p bin
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to create the 'bin' directory."
-    exit 1
-fi
-
-echo "Downloading the latest version of yt-dlp to bin/yt-dlp..."
-# Use curl to download, -L follows redirects, -o specifies the output file, overwriting if it exists
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to download yt-dlp."
-    exit 1
-fi
-
-echo "Making yt-dlp executable..."
 chmod a+rx bin/yt-dlp
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to make yt-dlp executable."
-    exit 1
-fi
+echo "yt-dlp has been successfully downloaded to bin/yt-dlp."
 
-echo "yt-dlp has been successfully downloaded and placed in bin/yt-dlp."
+# --- Python Environment Setup ---
+VENV_PATH=".venv"
 
-echo ""
-echo "----------------------------------------"
-
-
-# --- Environment Setup Section ---
-
-echo "### Creating Python virtual environment and installing dependencies... ###"
-if [ ! -d ".venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv .venv
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to create the virtual environment."
-        rm -rf .venv
-        exit 1
-    fi
+echo -e "\nSetting up Python virtual environment..."
+if [ ! -d "$VENV_PATH" ]; then
+    echo "   -> Creating virtual environment at '$VENV_PATH'..."
+    "$PYTHON_CMD" -m venv "$VENV_PATH"
 else
-    echo "Virtual environment '.venv' already exists."
+    echo "   -> Virtual environment already exists."
 fi
 
-echo "Activating the virtual environment..."
-source .venv/bin/activate
-
+# Install dependencies using the venv's pip directly
 if [ -f "requirements.txt" ]; then
-    echo "Installing dependencies from requirements.txt..."
-    pip install -r requirements.txt
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to install dependencies from requirements.txt."
-        exit 1
-    fi
-    echo "Dependencies installed successfully."
+    echo "   -> Installing dependencies from requirements.txt..."
+    "$VENV_PATH/bin/pip" install -r requirements.txt
+    echo "   -> Dependencies installed successfully."
 else
-    echo "Error: requirements.txt not found. Cannot install Python dependencies."
+    echo "Error: requirements.txt not found. Cannot install dependencies."
     exit 1
 fi
 
-echo ""
-echo "Setup complete! You can now create your config file and run the program"
+echo -e "\nSetup complete! You can now create a config file and run the program."

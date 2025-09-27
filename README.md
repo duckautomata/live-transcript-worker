@@ -96,13 +96,13 @@ _Cons_
 ## Development
 
 ### Tech Used
-- Python 3.10
+- Python 3.12
 - FFmpeg
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 
 ### Requirements
-- Python 3.10 or greater
+- Python 3.11 or greater
 - FFmpeg
 - NVIDIA gpu to run the larger models. Or a decent cpu to run the smaller models.
 - Linux or Windows, but a Linux system is preferred (pure Linux or WSL).
@@ -115,6 +115,7 @@ _Cons_
     - [cuBLAS for CUDA 12 via CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
         >_Note: There are other options for installing cuBLAS. You can find them [here](https://developer.nvidia.com/cublas). But the CUDA Toolkit is the easiest._
     - [cuDNN 9 for CUDA 12](https://developer.nvidia.com/cudnn)
+    - **_Note_**: I use `cuda-toolkit-12-9` and `cudnn9-cuda-12-9` for my local development. You cannot use cuda-13 because it does not support cuda-13 at this moment.
 2. Run `scripts/setup.sh`
 3. Referencing `config/example.yaml`, create `config/config.yaml` and add your specific configurations.
 

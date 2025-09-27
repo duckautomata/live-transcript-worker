@@ -1,8 +1,16 @@
 # latest
-Using version [1.3](#13-2025-08-05)
+Using version [1.4](#14-2025-09-26)
 
 # Major version 1
-Using version [1.3](#13-2025-08-05)
+Using version [1.4](#14-2025-09-26)
+
+## 1.4 (2025-09-26)
+**Important**
+- Python 3.11+ is now required.
+
+**Changes**
+- Upgrading docker base iamge to cuda 12.9 and ubuntu 24
+- Upgrading dependencies
 
 ## 1.3 (2025-08-05)
 **Changes**
