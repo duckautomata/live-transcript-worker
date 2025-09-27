@@ -24,7 +24,7 @@ PYTHON_SCRIPT="main.py"
 CONFIG_DIR="config"
 DEFAULT_CONFIG_FILE="config.yaml"
 
-# --- 1. Determine Configuration File ---
+# --- Determine Configuration File ---
 CONFIG_FILE_NAME=""
 if [ "$#" -eq 0 ]; then
     echo "No configuration file specified, defaulting to '$DEFAULT_CONFIG_FILE'."
@@ -48,7 +48,7 @@ fi
 
 echo "   Using configuration: $CONFIG_FILE_PATH"
 
-# --- 2. Update yt-dlp ---
+# --- Update yt-dlp ---
 echo -e "\nAttempting to update yt-dlp..."
 if [ -f "$YT_DLP_PATH" ]; then
     # Ensure the binary is executable
@@ -60,7 +60,7 @@ else
     exit 1
 fi
 
-# --- 3. Activate Virtual Environment ---
+# --- Activate Virtual Environment ---
 echo -e "\nActivating virtual environment..."
 if [ -f "$PYTHON_EXE" ]; then
     source "$VENV_PATH/bin/activate"
@@ -71,7 +71,7 @@ else
     exit 1
 fi
 
-# --- 4. Run Python Script ---
+# --- Run Python Script ---
 if [ -f "$PYTHON_SCRIPT" ]; then
     echo -e "\nRunning $PYTHON_SCRIPT..."
     python "$PYTHON_SCRIPT" "$CONFIG_FILE_NAME"
@@ -80,6 +80,6 @@ else
     exit 1
 fi
 
-# --- 5. Deactivate and Finish ---
+# --- Deactivate and Finish ---
 deactivate
 echo -e "\nScript completed successfully."
