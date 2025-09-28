@@ -95,7 +95,7 @@ class StreamWatcher:
 
             id_blacklist = Config.get_id_blacklist_config()
             for url in urls:
-                info: StreamInfoObject = StreamHelper.get_stream_stats(url)
+                info: StreamInfoObject = StreamHelper.get_stream_stats_until_valid_start(url, 10)
                 if info.stream_id in id_blacklist:
                     # blacklisted stream, continue on to the next url
                     continue

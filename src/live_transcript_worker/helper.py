@@ -86,6 +86,24 @@ class StreamHelper:
         return info
     
     @staticmethod
+    def get_stream_stats_until_valid_start(url: str, n: int) -> StreamInfoObject:
+        info: StreamInfoObject = StreamHelper.get_stream_stats(url)
+
+        if not info.is_live:
+            return info
+
+        while (info.start_time == "None" or info.start_time == "0" or info.start_time is None) and n > 0:
+            logger.warning(f"[stream_stats_valid] start_time is not valid. type: {type(info.start_time)}, value: {info.start_time}, n: {n}")
+            time.sleep(5)
+            info = StreamHelper.get_stream_stats(url)
+            n -= 1
+
+            if not info.is_live:
+                return info
+
+        return info
+    
+    @staticmethod
     def get_duration(audio: bytes):
         try:
             with io.BytesIO(audio) as buffer:
