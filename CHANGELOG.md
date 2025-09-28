@@ -1,8 +1,12 @@
 # latest
-Using version [1.4](#14-2025-09-26)
+Using version [1.5](#15-2025-09-28)
 
 # Major version 1
-Using version [1.4](#14-2025-09-26)
+Using version [1.5](#15-2025-09-28)
+
+## 1.5 (2025-09-28)
+**Important**
+- Looped the stream stats until we get a valid start time. This should help prevent it from starting with a start time of None.
 
 ## 1.4 (2025-09-26)
 **Important**
