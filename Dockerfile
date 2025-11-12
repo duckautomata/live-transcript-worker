@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     python3.12-venv \
     ffmpeg \
     curl \
+    unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -27,6 +28,12 @@ RUN mkdir -p /app/bin/ && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/bin/yt-dlp && \
     chmod a+rx /app/bin/yt-dlp && \
     /app/bin/yt-dlp -U
+
+# Install Deno (needed for latest yt-dlp version)
+# We set DENO_INSTALL to /usr/local so the binary lands in /usr/local/bin
+# which is in the default PATH and accessible to all users.
+RUN export DENO_INSTALL=/usr/local && \
+    curl -fsSL https://deno.land/install.sh | sh
 
 # Copy application files
 COPY main.py main.py

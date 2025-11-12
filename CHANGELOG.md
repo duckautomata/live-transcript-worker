@@ -1,8 +1,12 @@
 # latest
-Using version [1.5](#15-2025-09-28)
+Using version [1.6](#16-2025-11-11)
 
 # Major version 1
-Using version [1.5](#15-2025-09-28)
+Using version [1.6](#16-2025-11-11)
+
+## 1.6 (2025-11-11)
+**Important**
+- Added Deno to dockerfile since latest yt-dlp version requires it.
 
 ## 1.5 (2025-09-28)
 **Important**

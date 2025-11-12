@@ -3,6 +3,7 @@ import logging
 import marshal
 import os
 import shutil
+import time
 import requests
 from requests.auth import HTTPBasicAuth
 from urllib.parse import quote
@@ -56,6 +57,7 @@ class Storage(metaclass=SingletonMeta):
         Args:
             info (StreamInfoObject): stream info we want to activate.
         """
+        start_time = time.time()
         active_id = self.__get_active_id(info.key)
         if info.stream_id != active_id:
             logger.info(f"[{info.key}][activate] New stream id. Resetting data")
@@ -89,17 +91,19 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request:
             url = f"{self.__base_url}/{info.key}"
             logger.debug(f"[{info.key}][activate] sending request id={info.stream_id} title={info.stream_title} startTime={info.start_time} mediaType={info.media_type}")
+            storage_time = time.time() - start_time
             try:
                 response = requests.get(
                     f"{url}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
                     auth=HTTPBasicAuth(self.__username, self.__password),
                 )
+                storage_time = time.time() - start_time
                 if response.status_code != 200:
-                    logger.warning(f"[{info.key}][activate] Relay did not accept activation request. Response: {response.status_code} {response.text}")
+                    logger.warning(f"[{info.key}][activate][{(storage_time):.3f}] Relay did not accept activation request. Response: {response.status_code} {response.text}")
                 else:
-                    logger.info(f"[{info.key}][activate] Stream {info.stream_id} successfully activated")
+                    logger.info(f"[{info.key}][activate][{(storage_time):.3f}] Stream {info.stream_id} successfully activated")
             except requests.RequestException as e:
-                logger.error(f"[{info.key}][activate] Unable to send activation request to relay: {e}")
+                logger.error(f"[{info.key}][activate][{(storage_time):.3f}] Unable to send activation request to relay: {e}")
 
     def deactivate(self, key: str, stream_id: str):
         """Sets stream status to not live if the stream id is the same as the current active id. Then sends new info to server.
@@ -108,23 +112,26 @@ class Storage(metaclass=SingletonMeta):
             key (str): server key
             stream_id (str): the id of the stream
         """
+        start_time = time.time()
         data = self.__file_to_dict(key)
         data["isLive"] = False
         self.__dict_to_file(key, data)
 
         if self.__enable_request and stream_id != "":
             url = f"{self.__base_url}/{key}"
+            storage_time = time.time() - start_time
             try:
                 response = requests.get(
                     f"{url}/deactivate?id={quote(stream_id)}",
                     auth=HTTPBasicAuth(self.__username, self.__password),
                 )
+                storage_time = time.time() - start_time
                 if response.status_code != 200:
-                    logger.warning(f"[{key}][deactivate] Relay did not accept deactivation request. Response: {response.status_code} {response.text}")
+                    logger.warning(f"[{key}][deactivate][{(storage_time):.3f}] Relay did not accept deactivation request. Response: {response.status_code} {response.text}")
                 else:
-                    logger.info(f"[{key}][deactivate] Stream {stream_id} successfully deactivated")
+                    logger.info(f"[{key}][deactivate][{(storage_time):.3f}] Stream {stream_id} successfully deactivated")
             except requests.RequestException as e:
-                logger.error(f"[{key}][deactivate] Unable to send deactivation request to relay: {e}")
+                logger.error(f"[{key}][deactivate][{(storage_time):.3f}] Unable to send deactivation request to relay: {e}")
         else:
             # local only, so we should log
             logger.info(f"[{key}][deactivate] Stream {stream_id} successfully deactivated")
@@ -138,6 +145,7 @@ class Storage(metaclass=SingletonMeta):
             line (dict): {'id': -1, 'segments': [{'timestamp' 123, 'text': 'abc'}]}
             raw_b64_data (str): base64 encoded of the media binary. The type of media is determined by what the stream was activated with.
         """
+        storage_start_time = time.time()
         data = self.__file_to_dict(key)
         transcript: list = data["transcript"]
         last_id = -1
@@ -152,40 +160,43 @@ class Storage(metaclass=SingletonMeta):
 
         if self.__enable_request:
             url = f"{self.__base_url}/{key}"
+            storage_time = time.time() - storage_start_time
             try:
                 response = requests.post(
                     f"{url}/update",
                     auth=HTTPBasicAuth(self.__username, self.__password),
                     json=updateData,
                 )
+                storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
                     self.__upload(key, data)
                 elif response.status_code != 200:
-                    logger.warning(f"[{key}][update] Relay did not accept update request. Response: {response.status_code} {response.text}")
+                    logger.warning(f"[{key}][update][{(storage_time):.3f}] Relay did not accept update request. Response: {response.status_code} {response.text}")
                 else:
-                    logger.debug(f"[{key}][update] successfully sent {line}")
+                    logger.debug(f"[{key}][update][{(storage_time):.3f}] successfully sent {line}")
             except requests.RequestException as e:
                 logger.error(f"Unable to send update request to relay: {e}")
         else:
             # request disabled, so we append new line to local file
             line_text = []
-            time = line["timestamp"]
+            line_time = line["timestamp"]
             start_time = int(self.__file_to_dict(key).get("startTime", "0"))
             if "segments" in line:
                 for segment in line["segments"]:
                     if "text" in segment:
                         line_text.append(segment["text"])
-            total_seconds = time - start_time
+            total_seconds = line_time - start_time
             hours = total_seconds // 3600
             remaining_seconds = total_seconds % 3600
             minutes = remaining_seconds // 60
             seconds = remaining_seconds % 60
-            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}" if start_time > 0 else f"{datetime.fromtimestamp(time-start_time).strftime('%H:%M:%S')}"
+            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}" if start_time > 0 else f"{datetime.fromtimestamp(line_time-start_time).strftime('%H:%M:%S')}"
             with open(self.__get_transcript_file(key), "a") as f:
                 f.write(
                     f"[{timestamp}] {' '.join(line_text)}\n"
                 )
-            logger.debug(f"[{key}][update] successfully wrote {line}")
+            storage_time = time.time() - storage_start_time
+            logger.debug(f"[{key}][update][{(storage_time):.3f}] successfully wrote {line}")
 
         if self.__enable_dump_media:
             self.__dump_media(key, line["id"], raw_b64_data)
@@ -198,20 +209,23 @@ class Storage(metaclass=SingletonMeta):
             key (str): server key
             data (_type_): current state for the given key
         """
+        start_time = time.time()
         if self.__enable_request:
             url = f"{self.__base_url}/{key}"
+            storage_time = time.time() - start_time
             try:
                 response = requests.post(
                     f"{url}/upload",
                     auth=HTTPBasicAuth(self.__username, self.__password),
                     json=data,
                 )
+                storage_time = time.time() - start_time
                 if response.status_code != 200:
-                    logger.warning(f"[{key}][_upload] Relay did not accept upload request. Response: {response.status_code} {response.text}")
+                    logger.warning(f"[{key}][_upload][{(storage_time):.3f}] Relay did not accept upload request. Response: {response.status_code} {response.text}")
                 else:
-                    logger.info(f"[{key}][_upload] Uploaded entire state to server")
+                    logger.info(f"[{key}][_upload][{(storage_time):.3f}] Uploaded entire state to server")
             except requests.RequestException as e:
-                logger.error(f"[{key}][_upload] Unable to send upload request to relay: {e}")
+                logger.error(f"[{key}][_upload][{(storage_time):.3f}] Unable to send upload request to relay: {e}")
 
     def __get_marshal_file(self, key: str):
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
