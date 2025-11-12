@@ -127,6 +127,8 @@ class StreamHelper:
         except Exception:
             logger.error("[audio_duration] Invalid media data for buffer")
             return 0.0
+        
+        return 0.0
 
     @staticmethod
     def get_media_type(url: str, key: str) -> str:

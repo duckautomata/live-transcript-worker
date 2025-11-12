@@ -7,7 +7,7 @@ from threading import Event, Lock, Thread
 import time
 
 from src.live_transcript_worker.helper import StreamHelper
-from src.live_transcript_worker.types import Media, ProcessObject, StreamInfoObject
+from src.live_transcript_worker.types import ProcessObject, StreamInfoObject
 from src.live_transcript_worker.config import Config
 
 logger = logging.getLogger(__name__)
@@ -22,10 +22,12 @@ class Worker:
         self.mpeg_buffered_worker = MPEGBufferedWorker(key, queue, stop_event)
 
     def start(self, info: StreamInfoObject):
-        if info.media_type == Media.VIDEO:
-            self.mpeg_buffered_worker.start(info)
-        else:
+        # Buffered_worder grabs video, fixed_bitrate grabs audio.
+        # Twitch requires fixed bitrate. Youtube requires video.
+        if "twitch.tv" in info.url.lower():
             self.mpeg_fixed_bitrate_worker.start(info)
+        else:
+            self.mpeg_buffered_worker.start(info)
 
 
 class AbstractWorker(ABC):

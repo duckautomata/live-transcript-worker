@@ -47,11 +47,12 @@ streamers:
     # used to enable disable this key. If false, then we skip this key and it's essentially like this key never exists.
     active: true
 
-    # what type of media do we want to process and send to the server.
+    # what type tof media do we want o process and send to the server.
     # Types: none, audio, video
-    # if none, then we download audio but send over nothing
-    # if audio, then we download and send over audio
-    # If video, then we download multimedia video and send that over.
+    # if none, then we don't send anything to the server
+    # if audio, then we send over audio
+    # If video, then we send over multimedia
+    # The URL determins what we download. If it's twitch, then video will be treated as audio.
     media_type: none
 
 # List of stream id's that should not be transcribed.
