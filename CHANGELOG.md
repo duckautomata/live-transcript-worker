@@ -1,8 +1,12 @@
 # latest
-Using version [1.6](#16-2025-11-11)
+Using version [1.7](#17-2025-11-23)
 
 # Major version 1
-Using version [1.6](#16-2025-11-11)
+Using version [1.7](#17-2025-11-23)
+
+## 1.7 (2025-11-23)
+**Important**
+- Added DASHWorker for YouTube streams. Will start from the beginning and should allow for accurate timestamps.
 
 ## 1.6 (2025-11-11)
 **Important**
