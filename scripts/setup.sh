@@ -52,7 +52,7 @@ done
 # --- Tool Download ---
 echo -e "\nDownloading yt-dlp..."
 mkdir -p bin
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o bin/yt-dlp
 chmod a+rx bin/yt-dlp
 echo "yt-dlp has been successfully downloaded to bin/yt-dlp."
 
