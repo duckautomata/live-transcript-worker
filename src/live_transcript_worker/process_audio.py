@@ -99,7 +99,7 @@ class ProcessAudio(object):
         if self.whisper_model is None:
             self.load_model()
         try:
-            segments, info = self.whisper_model.transcribe(
+            segments, info = self.whisper_model.transcribe( # type: ignore
                 data,
                 language="en",
                 vad_filter=True,
