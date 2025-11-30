@@ -5,7 +5,6 @@ import os
 import shutil
 import time
 import requests
-from requests.auth import HTTPBasicAuth
 from urllib.parse import quote
 from datetime import datetime
 from src.live_transcript_worker.config import Config
@@ -31,8 +30,10 @@ class Storage(metaclass=SingletonMeta):
     def __init__(self):
         server_config = Config.get_server_config()
         self.__enable_request = server_config.get("enabled", False)
-        self.__username = server_config.get("username", "")
-        self.__password = server_config.get("password", "")
+        api_key = server_config.get("apiKey", "")
+        self.__headers = {
+            "X-API-Key": api_key.strip()
+        }
         self.__base_url = server_config.get("url", "http://localhost:8080")
         self.__enable_dump_media = server_config.get("enable_dump_media", False)
 
@@ -95,7 +96,7 @@ class Storage(metaclass=SingletonMeta):
             try:
                 response = requests.get(
                     f"{url}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
-                    auth=HTTPBasicAuth(self.__username, self.__password),
+                    headers=self.__headers
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -123,7 +124,7 @@ class Storage(metaclass=SingletonMeta):
             try:
                 response = requests.get(
                     f"{url}/deactivate?id={quote(stream_id)}",
-                    auth=HTTPBasicAuth(self.__username, self.__password),
+                    headers=self.__headers,
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -164,7 +165,7 @@ class Storage(metaclass=SingletonMeta):
             try:
                 response = requests.post(
                     f"{url}/update",
-                    auth=HTTPBasicAuth(self.__username, self.__password),
+                    headers=self.__headers,
                     json=updateData,
                 )
                 storage_time = time.time() - storage_start_time
@@ -216,7 +217,7 @@ class Storage(metaclass=SingletonMeta):
             try:
                 response = requests.post(
                     f"{url}/upload",
-                    auth=HTTPBasicAuth(self.__username, self.__password),
+                    headers=self.__headers,
                     json=data,
                 )
                 storage_time = time.time() - start_time

@@ -4,9 +4,8 @@
 ####################################################################
 
 server:
-  # credentials used by the live-transcript-server
-  username: ""
-  password: ""
+  # credential used by the live-transcript-server
+  apiKey: ""
 
   # url of the live-transcript-server
   url: https://example.com

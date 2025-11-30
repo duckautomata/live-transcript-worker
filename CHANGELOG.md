@@ -1,8 +1,12 @@
 # latest
-Using version [1.7](#17-2025-11-23)
+Using version [1.8](#18-2025-11-30)
 
 # Major version 1
-Using version [1.7](#17-2025-11-23)
+Using version [1.8](#18-2025-11-30)
+
+## 1.8 (2025-11-30)
+**Important**
+- Changed creds to api key header
 
 ## 1.7 (2025-11-23)
 **Important**

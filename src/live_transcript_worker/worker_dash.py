@@ -198,8 +198,9 @@ class DASHWorker(AbstractWorker):
         last_seq = start_seq
         current_stream_time = start_time
         
+        # The chunk of fragments. duration is used to keep track of how large the chunk is.
         buffer = bytearray()
-        self.buffer_duration = 0.0
+        buffer_duration = 0.0
 
         # Determine if we are in video mode
         is_video_mode = info.media_type == Media.VIDEO
@@ -276,7 +277,7 @@ class DASHWorker(AbstractWorker):
 
                         if duration > 0:
                             buffer.extend(data)
-                            self.buffer_duration += duration
+                            buffer_duration += duration
                         
                         # Cleanup merged file
                         try:
@@ -286,20 +287,20 @@ class DASHWorker(AbstractWorker):
                         
                         last_seq = seq
                         
-                        # Check buffer size and emit
-                        if self.buffer_duration >= self.buffer_size_seconds:
+                        # Check buffer size and emit. We subtract 200ms since the fragments aren't exact. And we want to process a chunk that is 5.99 seconds since it is close enough to 6.
+                        if buffer_duration >= self.buffer_size_seconds - 0.2:
                             process_obj = ProcessObject(
                                 raw=bytes(buffer),
                                 audio_start_time=current_stream_time,
                                 key=info.key,
                                 media_type=info.media_type,
                             )
-                            logger.debug(f"[{info.key}][DASHWorker] Adding chunk seq {seq} to queue. Duration: {self.buffer_duration:.2f}s")
+                            logger.debug(f"[{info.key}][DASHWorker] Adding chunk seq {seq} to queue. Duration: {buffer_duration:.3f}s")
                             self.queue.put(process_obj)
                             
-                            current_stream_time += self.buffer_duration
+                            current_stream_time += buffer_duration
                             buffer.clear()
-                            self.buffer_duration = 0.0
+                            buffer_duration = 0.0
                             
                             # Save state after successful queueing
                             self._save_state(state_file, info.stream_id, last_seq, current_stream_time)
