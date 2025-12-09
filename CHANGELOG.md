@@ -1,8 +1,12 @@
 # latest
-Using version [1.8](#18-2025-11-30)
+Using version [1.9](#19-2025-12-08)
 
 # Major version 1
-Using version [1.8](#18-2025-11-30)
+Using version [1.9](#19-2025-12-08)
+
+## 1.9 (2025-12-08)
+**Important**
+- Added staleness to fragments
 
 ## 1.8 (2025-11-30)
 **Important**

@@ -218,7 +218,7 @@ class DASHWorker(AbstractWorker):
             valid_files = [f for f in files if "Frag" in f and not f.endswith(".part") and not f.endswith(".ytdl")]
             
             # Group files by sequence
-            pending_fragments = {}
+            pending_fragments: dict[int, list[str]] = {}
             for f_path in valid_files:
                 filename = os.path.basename(f_path)
                 match = re.search(r"Frag(\d+)", filename)
@@ -227,7 +227,7 @@ class DASHWorker(AbstractWorker):
                 
                 seq = int(match.group(1))
                 
-                # Resilience: Skip fragments we have already processed
+                # Skip fragments we have already processed
                 if seq <= last_seq:
                     continue
 
@@ -246,6 +246,10 @@ class DASHWorker(AbstractWorker):
             
             # Process sequences in order
             sequences = sorted(pending_fragments.keys())
+            
+            # Identify the latest available sequence to check for staleness
+            latest_seq = sequences[-1]
+
             for seq in sequences:
                 files_for_seq = pending_fragments[seq]
                 
@@ -263,10 +267,16 @@ class DASHWorker(AbstractWorker):
                     # Just need 1 file (the audio track)
                     is_ready = len(files_for_seq) >= 1
 
+                # If the sequence is not ready but is "stale" (we are far ahead), 
+                # force it to process with whatever partial data we have.
+                if not is_ready and latest_seq > seq + self.dash_stale_size:
+                     logger.warning(f"[{info.key}][DASHWorker] Sequence {seq} is incomplete (files: {len(files_for_seq)}) but stale (Latest: {latest_seq}). Processing with partial data.")
+                     is_ready = True
+
                 if is_ready:
                     merged_ts_path = os.path.join(fragment_dir, f"merged_{seq}.ts")
                     
-                    # Even for audio-only, we run it through merge_fragments (ffmpeg -c copy -f mpegts).
+                    # Even for audio-only (or partial video-only), we run it through merge_fragments.
                     # This standardizes the container to MPEG-TS for downstream processing.
                     if self._merge_fragments(files_for_seq, merged_ts_path):
                         # Calculate accurate duration using av
@@ -307,8 +317,8 @@ class DASHWorker(AbstractWorker):
                     else:
                         logger.error(f"[{info.key}][DASHWorker] Failed to process fragments for seq {seq}")
                 else:
-                    # Sequence is incomplete. Stop processing to wait for it.
-                    # This ensures we don't skip ahead.
+                    # It is incomplete, but NOT stale yet.
+                    # We assume it is still downloading, so we break and wait for the next loop.
                     break
             
             time.sleep(1)
