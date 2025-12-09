@@ -4,7 +4,7 @@ import marshal
 import os
 import shutil
 import time
-import requests
+import httpx
 from urllib.parse import quote
 from datetime import datetime
 from src.live_transcript_worker.config import Config
@@ -94,16 +94,17 @@ class Storage(metaclass=SingletonMeta):
             logger.debug(f"[{info.key}][activate] sending request id={info.stream_id} title={info.stream_title} startTime={info.start_time} mediaType={info.media_type}")
             storage_time = time.time() - start_time
             try:
-                response = requests.get(
+                response = httpx.get(
                     f"{url}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
-                    headers=self.__headers
+                    headers=self.__headers,
+                    timeout=None
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(f"[{info.key}][activate][{(storage_time):.3f}] Relay did not accept activation request. Response: {response.status_code} {response.text}")
                 else:
                     logger.info(f"[{info.key}][activate][{(storage_time):.3f}] Stream {info.stream_id} successfully activated")
-            except requests.RequestException as e:
+            except httpx.RequestError as e:
                 logger.error(f"[{info.key}][activate][{(storage_time):.3f}] Unable to send activation request to relay: {e}")
 
     def deactivate(self, key: str, stream_id: str):
@@ -122,16 +123,17 @@ class Storage(metaclass=SingletonMeta):
             url = f"{self.__base_url}/{key}"
             storage_time = time.time() - start_time
             try:
-                response = requests.get(
+                response = httpx.get(
                     f"{url}/deactivate?id={quote(stream_id)}",
                     headers=self.__headers,
+                    timeout=None
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(f"[{key}][deactivate][{(storage_time):.3f}] Relay did not accept deactivation request. Response: {response.status_code} {response.text}")
                 else:
                     logger.info(f"[{key}][deactivate][{(storage_time):.3f}] Stream {stream_id} successfully deactivated")
-            except requests.RequestException as e:
+            except httpx.RequestError as e:
                 logger.error(f"[{key}][deactivate][{(storage_time):.3f}] Unable to send deactivation request to relay: {e}")
         else:
             # local only, so we should log
@@ -163,10 +165,11 @@ class Storage(metaclass=SingletonMeta):
             url = f"{self.__base_url}/{key}"
             storage_time = time.time() - storage_start_time
             try:
-                response = requests.post(
+                response = httpx.post(
                     f"{url}/update",
                     headers=self.__headers,
                     json=updateData,
+                    timeout=None
                 )
                 storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
@@ -175,7 +178,7 @@ class Storage(metaclass=SingletonMeta):
                     logger.warning(f"[{key}][update][{(storage_time):.3f}] Relay did not accept update request. Response: {response.status_code} {response.text}")
                 else:
                     logger.debug(f"[{key}][update][{(storage_time):.3f}] successfully sent {line}")
-            except requests.RequestException as e:
+            except httpx.RequestError as e:
                 logger.error(f"Unable to send update request to relay: {e}")
         else:
             # request disabled, so we append new line to local file
@@ -215,17 +218,18 @@ class Storage(metaclass=SingletonMeta):
             url = f"{self.__base_url}/{key}"
             storage_time = time.time() - start_time
             try:
-                response = requests.post(
+                response = httpx.post(
                     f"{url}/upload",
                     headers=self.__headers,
                     json=data,
+                    timeout=None
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(f"[{key}][_upload][{(storage_time):.3f}] Relay did not accept upload request. Response: {response.status_code} {response.text}")
                 else:
                     logger.info(f"[{key}][_upload][{(storage_time):.3f}] Uploaded entire state to server")
-            except requests.RequestException as e:
+            except httpx.RequestError as e:
                 logger.error(f"[{key}][_upload][{(storage_time):.3f}] Unable to send upload request to relay: {e}")
 
     def __get_marshal_file(self, key: str):

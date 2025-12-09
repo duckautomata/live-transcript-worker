@@ -41,7 +41,7 @@ fi
 echo "Python venv module found"
 
 # Check for other necessary tools
-for tool in ffmpeg curl; do
+for tool in ffmpeg curl deno; do
     if ! command -v "$tool" &>/dev/null; then
         echo "Error: '$tool' is not installed. Please install it to continue."
         exit 1
