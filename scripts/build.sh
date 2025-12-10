@@ -34,6 +34,8 @@ if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
+BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
 # --- Tag Generation ---
 # Extract the major version (e.g., '1' from '1.2')
 MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
@@ -63,6 +65,8 @@ fi
 # Build the image and apply all tags in a single, efficient command.
 echo "Building Docker image..."
 if ! $DOCKER_CMD build \
+    --build-arg APP_VERSION="${VERSION}" \
+    --build-arg BUILD_DATE="${BUILD_DATE}" \
     -t "${SPECIFIC_TAG}" \
     -t "${MAJOR_TAG}" \
     -t "${LATEST_TAG}" \

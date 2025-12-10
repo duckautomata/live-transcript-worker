@@ -66,6 +66,11 @@ def main():
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)
 
+    app_version = os.getenv("APP_VERSION", "local")
+    build_date = os.getenv("BUILD_DATE", "unknown")
+    app_logger.info(f"Startup Version: {app_version}")
+    app_logger.info(f"Built On: {build_date}")
+
     stream_watcher = StreamWatcher()
     streamers = Config.get_all_streamers_config()
     for streamer in streamers:

@@ -69,3 +69,7 @@ if ! $DOCKER_CMD ps -q -f name="^${CONTAINER_NAME}$" > /dev/null; then
 fi
 
 echo "Container '$CONTAINER_NAME' started successfully."
+echo -e "\nRetrieving startup logs for $CONTAINER_NAME..."
+echo "---------------------------------------------------"
+$DOCKER_CMD logs "$CONTAINER_NAME"
+echo "---------------------------------------------------"

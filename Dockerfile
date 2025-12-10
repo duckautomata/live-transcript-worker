@@ -43,4 +43,9 @@ RUN chown -R 1000:1000 /app
 VOLUME ["/app/tmp", "/app/models"]
 USER 1000
 
+ARG APP_VERSION="unknown"
+ARG BUILD_DATE="unknown"
+ENV APP_VERSION=${APP_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
+
 CMD ["python3", "main.py"]
