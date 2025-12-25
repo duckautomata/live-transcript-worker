@@ -334,6 +334,9 @@ class DASHWorker(AbstractWorker):
                 media_type=info.media_type,
             )
              self.queue.put(process_obj)
+             
+             current_stream_time += buffer_duration
+             self._save_state(state_file, info.stream_id, last_seq, current_stream_time)
 
     def _merge_fragments(self, inputs: list[str], output: str) -> bool:
         """Merges multiple input files into one MPEG-TS file using ffmpeg."""
