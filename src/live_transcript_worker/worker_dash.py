@@ -8,8 +8,7 @@ import av
 import subprocess
 import time
 from src.live_transcript_worker.worker_abstract import AbstractWorker
-
-from src.live_transcript_worker.types import Media, ProcessObject, StreamInfoObject
+from src.live_transcript_worker.custom_types import Media, ProcessObject, StreamInfoObject
 
 logger = logging.getLogger(__name__)
 

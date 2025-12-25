@@ -9,7 +9,7 @@ import time
 from faster_whisper import WhisperModel
 
 from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.types import Media, ProcessObject
+from src.live_transcript_worker.custom_types import Media, ProcessObject
 from src.live_transcript_worker.storage import Storage
 
 logger = logging.getLogger(__name__)

@@ -2,8 +2,7 @@ import logging
 import subprocess
 import time
 from src.live_transcript_worker.worker_abstract import AbstractWorker
-
-from src.live_transcript_worker.types import ProcessObject, StreamInfoObject
+from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
 
 logger = logging.getLogger(__name__)
 

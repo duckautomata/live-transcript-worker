@@ -3,7 +3,7 @@ import os
 from queue import Queue
 from threading import Event
 
-from src.live_transcript_worker.types import StreamInfoObject
+from src.live_transcript_worker.custom_types import StreamInfoObject
 from src.live_transcript_worker.config import Config
 
 class AbstractWorker(ABC):

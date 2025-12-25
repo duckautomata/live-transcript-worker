@@ -5,7 +5,7 @@ from threading import Thread, Event
 import time
 
 from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.types import ProcessObject, StreamInfoObject
+from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
 from src.live_transcript_worker.process_audio import ProcessAudio
 from src.live_transcript_worker.storage import Storage
 from src.live_transcript_worker.helper import StreamHelper

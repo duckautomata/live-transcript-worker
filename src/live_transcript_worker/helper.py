@@ -8,7 +8,7 @@ import time
 import av
 
 from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.types import Media, StreamInfoObject
+from src.live_transcript_worker.custom_types import Media, StreamInfoObject
 
 logger = logging.getLogger(__name__)
 
