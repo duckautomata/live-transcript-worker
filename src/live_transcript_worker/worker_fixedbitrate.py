@@ -42,18 +42,14 @@ class MPEGFixedBitrateWorker(AbstractWorker):
             if not chunk:
                 process.poll()
                 if process.returncode is not None:
-                    logger.info(
-                        f"[{info.key}][MPEGFixedBitrateWorker] yt-dlp process ended with code {process.returncode}."
-                    )
+                    logger.info(f"[{info.key}][MPEGFixedBitrateWorker] yt-dlp process ended with code {process.returncode}.")
                     stderr_output = process.stderr.read().decode(errors="ignore")
                     if stderr_output:
                         logger.debug(f"[{info.key}][MPEGFixedBitrateWorker] yt-dlp stderr:\n{stderr_output}")
                     if process.returncode != 0:
                         logger.error(f"[{info.key}][MPEGFixedBitrateWorker] yt-dlp exited with an error.")
                     else:
-                        logger.info(
-                            f"[{info.key}][MPEGFixedBitrateWorker] yt-dlp process finished (stream likely ended)."
-                        )
+                        logger.info(f"[{info.key}][MPEGFixedBitrateWorker] yt-dlp process finished (stream likely ended).")
                 else:
                     logger.warning(f"[{info.key}][MPEGFixedBitrateWorker] No data from yt-dlp, potentially stalled...")
                 break
@@ -112,12 +108,8 @@ class MPEGFixedBitrateWorker(AbstractWorker):
             else:
                 sample_rate = self.yt_audio_rate
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
-            logger.debug(
-                f"[{info.key}][MPEGFixedBitrateWorker][create_process] successfully created yt-dlp download process."
-            )
+            logger.debug(f"[{info.key}][MPEGFixedBitrateWorker][create_process] successfully created yt-dlp download process.")
             return process, sample_rate
         except FileNotFoundError:
-            logger.error(
-                f"[{info.key}][MPEGFixedBitrateWorker][create_process] 'yt-dlp' not found under '{self.ytdlp_path}'."
-            )
+            logger.error(f"[{info.key}][MPEGFixedBitrateWorker][create_process] 'yt-dlp' not found under '{self.ytdlp_path}'.")
         return process, sample_rate

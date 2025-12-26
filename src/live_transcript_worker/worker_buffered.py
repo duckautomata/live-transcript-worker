@@ -45,10 +45,7 @@ class MPEGBufferedWorker(AbstractWorker):
                     should_sleep = True
                     continue
                 buffer_copy = bytes(self.buffer)
-                if (
-                    len(buffer_copy) < min_buffer_size
-                    or StreamHelper.get_duration(buffer_copy) < self.buffer_size_seconds
-                ):
+                if len(buffer_copy) < min_buffer_size or StreamHelper.get_duration(buffer_copy) < self.buffer_size_seconds:
                     should_sleep = True
                     continue
 
@@ -98,9 +95,7 @@ class MPEGBufferedWorker(AbstractWorker):
             if not chunk:
                 process.poll()
                 if process.returncode is not None:
-                    logger.info(
-                        f"[{info.key}][MPEGBufferedWorker] yt-dlp process ended with code {process.returncode}."
-                    )
+                    logger.info(f"[{info.key}][MPEGBufferedWorker] yt-dlp process ended with code {process.returncode}.")
                     stderr_output = process.stderr.read().decode(errors="ignore")
                     if stderr_output:
                         logger.debug(f"[{info.key}][MPEGBufferedWorker] yt-dlp stderr:\n{stderr_output}")
@@ -134,12 +129,8 @@ class MPEGBufferedWorker(AbstractWorker):
                 info.url,
             ]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
-            logger.debug(
-                f"[{info.key}][MPEGBufferedWorker][create_process] successfully created yt-dlp download process."
-            )
+            logger.debug(f"[{info.key}][MPEGBufferedWorker][create_process] successfully created yt-dlp download process.")
             return process
         except FileNotFoundError:
-            logger.error(
-                f"[{info.key}][MPEGBufferedWorker][create_process] 'yt-dlp' not found under '{self.ytdlp_path}'."
-            )
+            logger.error(f"[{info.key}][MPEGBufferedWorker][create_process] 'yt-dlp' not found under '{self.ytdlp_path}'.")
         return process

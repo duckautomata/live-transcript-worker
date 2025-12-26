@@ -124,9 +124,7 @@ class StreamWatcher:
         logger.info("[processor] thread starting")
         audio_processor = ProcessAudio(self.ready_event)
         last_queue_item_time = time.time()
-        while (
-            not self.stop_event.is_set() or not self.processing_queue.empty() or not self.worker_finished_event.is_set()
-        ):
+        while not self.stop_event.is_set() or not self.processing_queue.empty() or not self.worker_finished_event.is_set():
             try:
                 item = self.processing_queue.get(timeout=0.5)
                 last_queue_item_time = time.time()

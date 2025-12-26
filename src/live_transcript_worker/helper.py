@@ -59,7 +59,9 @@ class StreamHelper:
                     info.stream_title = StreamHelper.remove_date(metadata.get("title", "Unknown Title"))
                     start_time = metadata.get("release_timestamp", 0)
                     if "twitch.tv" in url.lower():
-                        info.stream_title = f"{metadata.get('display_id', 'Unknown Channel')} - {metadata.get('description', 'Unknown Title')}"
+                        info.stream_title = (
+                            f"{metadata.get('display_id', 'Unknown Channel')} - {metadata.get('description', 'Unknown Title')}"
+                        )
                         start_time = metadata.get("timestamp", 0)
                     if start_time == 0:
                         start_time = metadata.get("timestamp", time.time())
@@ -91,9 +93,7 @@ class StreamHelper:
             return info
 
         while (info.start_time == "None" or info.start_time == "0" or info.start_time is None) and n > 0:
-            logger.warning(
-                f"[stream_stats_valid] start_time is not valid. type: {type(info.start_time)}, value: {info.start_time}, n: {n}"
-            )
+            logger.warning(f"[stream_stats_valid] start_time is not valid. type: {type(info.start_time)}, value: {info.start_time}, n: {n}")
             time.sleep(5)
             info = StreamHelper.get_stream_stats(url)
             n -= 1

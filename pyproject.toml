@@ -7,8 +7,7 @@ requires-python = ">=3.12"
 dependencies = ["ruff"]
 
 [tool.ruff]
-# Same as Black.
-line-length = 120
+line-length = 140
 indent-width = 4
 
 # Assume Python 3.12

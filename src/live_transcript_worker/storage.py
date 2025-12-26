@@ -77,9 +77,7 @@ class Storage(metaclass=SingletonMeta):
             if not self.__enable_request:
                 # request disabled, so we reset the local file
                 with open(self.__get_transcript_file(info.key), "w") as f:
-                    f.write(
-                        f"Activating stream {info.stream_title} [{info.stream_id}] started at [{info.start_time}]\n"
-                    )
+                    f.write(f"Activating stream {info.stream_title} [{info.stream_id}] started at [{info.start_time}]\n")
             self.__clear_dump_folder(info.key)
 
         else:
@@ -108,13 +106,9 @@ class Storage(metaclass=SingletonMeta):
                         f"[{info.key}][activate][{(storage_time):.3f}] Relay did not accept activation request. Response: {response.status_code} {response.text}"
                     )
                 else:
-                    logger.info(
-                        f"[{info.key}][activate][{(storage_time):.3f}] Stream {info.stream_id} successfully activated"
-                    )
+                    logger.info(f"[{info.key}][activate][{(storage_time):.3f}] Stream {info.stream_id} successfully activated")
             except httpx.RequestError as e:
-                logger.error(
-                    f"[{info.key}][activate][{(storage_time):.3f}] Unable to send activation request to relay: {e}"
-                )
+                logger.error(f"[{info.key}][activate][{(storage_time):.3f}] Unable to send activation request to relay: {e}")
 
     def deactivate(self, key: str, stream_id: str):
         """Sets stream status to not live if the stream id is the same as the current active id. Then sends new info to server.
@@ -139,13 +133,9 @@ class Storage(metaclass=SingletonMeta):
                         f"[{key}][deactivate][{(storage_time):.3f}] Relay did not accept deactivation request. Response: {response.status_code} {response.text}"
                     )
                 else:
-                    logger.info(
-                        f"[{key}][deactivate][{(storage_time):.3f}] Stream {stream_id} successfully deactivated"
-                    )
+                    logger.info(f"[{key}][deactivate][{(storage_time):.3f}] Stream {stream_id} successfully deactivated")
             except httpx.RequestError as e:
-                logger.error(
-                    f"[{key}][deactivate][{(storage_time):.3f}] Unable to send deactivation request to relay: {e}"
-                )
+                logger.error(f"[{key}][deactivate][{(storage_time):.3f}] Unable to send deactivation request to relay: {e}")
         else:
             # local only, so we should log
             logger.info(f"[{key}][deactivate] Stream {stream_id} successfully deactivated")

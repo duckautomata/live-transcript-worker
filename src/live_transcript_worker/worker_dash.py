@@ -59,9 +59,7 @@ class DASHWorker(AbstractWorker):
             os.makedirs(fragment_dir, exist_ok=True)
             verification_backup_path, verification_target_filename = None, None
         else:
-            logger.info(
-                f"[{info.key}][DASHWorker] Resuming from sequence {last_processed_seq} at time {current_stream_time}"
-            )
+            logger.info(f"[{info.key}][DASHWorker] Resuming from sequence {last_processed_seq} at time {current_stream_time}")
             os.makedirs(fragment_dir, exist_ok=True)
 
             verification_backup_path, verification_target_filename = self._setup_verification(info, fragment_dir)
@@ -105,12 +103,10 @@ class DASHWorker(AbstractWorker):
         try:
             files = glob.glob(os.path.join(fragment_dir, f"{info.stream_id}*"))
             for f in files:
-                if os.path.isfile(f) and "Frag" not in f and not f.endswith(".part") and not f.endswith(".ytdl"):
+                if os.path.isfile(f) and "Frag" not in f:
                     try:
                         os.remove(f)
-                        logger.info(
-                            f"[{info.key}][DASHWorker] Deleted existing final file {f} to prevent yt-dlp from skipping."
-                        )
+                        logger.info(f"[{info.key}][DASHWorker] Deleted existing final file {f} to prevent yt-dlp from skipping.")
                     except Exception as e:
                         logger.warning(f"[{info.key}][DASHWorker] Failed to delete file {f}: {e}")
         except Exception as e:
@@ -147,9 +143,7 @@ class DASHWorker(AbstractWorker):
                 info.url,
             ]
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.debug(
-                f"[{info.key}][DASHWorker] successfully created yt-dlp download process with mode {info.media_type}."
-            )
+            logger.debug(f"[{info.key}][DASHWorker] successfully created yt-dlp download process with mode {info.media_type}.")
             return process
         except Exception as e:
             logger.error(f"[{info.key}][DASHWorker] failed to create process: {e}")
@@ -264,9 +258,7 @@ class DASHWorker(AbstractWorker):
             return last_processed_seq, current_stream_time, process
 
         # Content is different! Sequence Reset detected.
-        logger.warning(
-            f"[{info.key}][DASHWorker] Verification Failed: Stream content mismatch. Sequence reset detected!"
-        )
+        logger.warning(f"[{info.key}][DASHWorker] Verification Failed: Stream content mismatch. Sequence reset detected!")
 
         # We reset the sequence number to 0 since we are starting from the beginning.
         # But we keep the current stream time since the previous data is still valid and will still be in the vod.
@@ -514,9 +506,7 @@ class DASHWorker(AbstractWorker):
                                 key=info.key,
                                 media_type=info.media_type,
                             )
-                            logger.debug(
-                                f"[{info.key}][DASHWorker] Adding chunk seq {seq} to queue. Duration: {buffer_duration:.3f}s"
-                            )
+                            logger.debug(f"[{info.key}][DASHWorker] Adding chunk seq {seq} to queue. Duration: {buffer_duration:.3f}s")
                             self.queue.put(process_obj)
 
                             current_stream_time += buffer_duration
