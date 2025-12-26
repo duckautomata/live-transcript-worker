@@ -1,13 +1,14 @@
 import logging
 import subprocess
-from threading import Event, Lock, Thread
 import time
+from threading import Event, Lock, Thread
+
+from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
+from src.live_transcript_worker.helper import StreamHelper
 from src.live_transcript_worker.worker_abstract import AbstractWorker
 
-from src.live_transcript_worker.helper import StreamHelper
-from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
-
 logger = logging.getLogger(__name__)
+
 
 class MPEGBufferedWorker(AbstractWorker):
     """
@@ -37,12 +38,17 @@ class MPEGBufferedWorker(AbstractWorker):
                 time.sleep(1)
                 should_sleep = False
             with self.buffer_lock:
-                next_start_time = time.time() - self.live_latency_seconds  # Once we process the buffer, the current time is when the next buffer starts
+                next_start_time = (
+                    time.time() - self.live_latency_seconds
+                )  # Once we process the buffer, the current time is when the next buffer starts
                 if not self.buffer:
                     should_sleep = True
                     continue
                 buffer_copy = bytes(self.buffer)
-                if len(buffer_copy) < min_buffer_size or StreamHelper.get_duration(buffer_copy) < self.buffer_size_seconds:
+                if (
+                    len(buffer_copy) < min_buffer_size
+                    or StreamHelper.get_duration(buffer_copy) < self.buffer_size_seconds
+                ):
                     should_sleep = True
                     continue
 
@@ -73,7 +79,6 @@ class MPEGBufferedWorker(AbstractWorker):
         download_thread.join()
         return
 
-    
     def downloader(self, info: StreamInfoObject):
         logger.info(f"[{info.key}][MPEGBufferedWorker] Starting downloader")
         process = self.create_process(info)
@@ -93,7 +98,9 @@ class MPEGBufferedWorker(AbstractWorker):
             if not chunk:
                 process.poll()
                 if process.returncode is not None:
-                    logger.info(f"[{info.key}][MPEGBufferedWorker] yt-dlp process ended with code {process.returncode}.")
+                    logger.info(
+                        f"[{info.key}][MPEGBufferedWorker] yt-dlp process ended with code {process.returncode}."
+                    )
                     stderr_output = process.stderr.read().decode(errors="ignore")
                     if stderr_output:
                         logger.debug(f"[{info.key}][MPEGBufferedWorker] yt-dlp stderr:\n{stderr_output}")
@@ -112,9 +119,7 @@ class MPEGBufferedWorker(AbstractWorker):
         self.ytdlp_stopped.set()
         return
 
-    def create_process(
-        self, info: StreamInfoObject
-    ) -> subprocess.Popen[bytes] | None:
+    def create_process(self, info: StreamInfoObject) -> subprocess.Popen[bytes] | None:
         process = None
         logger.debug(f"[{info.key}][MPEGBufferedWorker][create_process] creating yt-dlp download process")
         try:
@@ -128,11 +133,13 @@ class MPEGBufferedWorker(AbstractWorker):
                 "-",
                 info.url,
             ]
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+            logger.debug(
+                f"[{info.key}][MPEGBufferedWorker][create_process] successfully created yt-dlp download process."
             )
-            logger.debug(f"[{info.key}][MPEGBufferedWorker][create_process] successfully created yt-dlp download process.")
             return process
         except FileNotFoundError:
-            logger.error(f"[{info.key}][MPEGBufferedWorker][create_process] 'yt-dlp' not found under '{self.ytdlp_path}'.")
+            logger.error(
+                f"[{info.key}][MPEGBufferedWorker][create_process] 'yt-dlp' not found under '{self.ytdlp_path}'."
+            )
         return process

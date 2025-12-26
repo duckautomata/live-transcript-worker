@@ -1,17 +1,18 @@
 import logging
-from queue import Empty, Queue
 import random
-from threading import Thread, Event
 import time
+from queue import Empty, Queue
+from threading import Event, Thread
 
 from src.live_transcript_worker.config import Config
 from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
+from src.live_transcript_worker.helper import StreamHelper
 from src.live_transcript_worker.process_audio import ProcessAudio
 from src.live_transcript_worker.storage import Storage
-from src.live_transcript_worker.helper import StreamHelper
 from src.live_transcript_worker.worker import Worker
 
 logger = logging.getLogger(__name__)
+
 
 class StreamWatcher:
     """
@@ -20,9 +21,7 @@ class StreamWatcher:
     """
 
     def __init__(self):
-        self.seconds_between_channel_retry: int = Config.get_server_config().get(
-            "seconds_between_channel_retry", 20
-        )
+        self.seconds_between_channel_retry: int = Config.get_server_config().get("seconds_between_channel_retry", 20)
         # Used to tell the threads when to stop. Used on shutdown.
         self.stop_event = Event()
 
@@ -76,7 +75,6 @@ class StreamWatcher:
         self.worker_finished_event.set()
         if self.process_thread.is_alive():
             self.process_thread.join(timeout=30)
-        
 
     def watcher(self, key: str, urls: list[str]):
         """
@@ -103,7 +101,9 @@ class StreamWatcher:
                 info.key = key
                 info.media_type = StreamHelper.get_media_type(url, key)
                 if info.is_live:
-                    logger.info(f'[{key}][watcher] stream "{info.stream_title}" id {info.stream_id} started at {info.start_time} using media {info.media_type}')
+                    logger.info(
+                        f'[{key}][watcher] stream "{info.stream_title}" id {info.stream_id} started at {info.start_time} using media {info.media_type}'
+                    )
                     self.storage.activate(info=info)
                     last_stream_id = info.stream_id
                     worker.start(info)
@@ -112,11 +112,7 @@ class StreamWatcher:
                     logger.info(f"[{key}][watcher] stopping")
                     self.storage.deactivate(key, info.stream_id)
                     return
-            next_check = (
-                time.time()
-                + self.seconds_between_channel_retry
-                + random.randint(-5, 10)
-            )
+            next_check = time.time() + self.seconds_between_channel_retry + random.randint(-5, 10)
             time.sleep(0.5)
         logger.info(f"[{key}][watcher] out of loop stopping. Using last_stream_id to deactivate.")
         self.storage.deactivate(key, last_stream_id)
@@ -128,7 +124,9 @@ class StreamWatcher:
         logger.info("[processor] thread starting")
         audio_processor = ProcessAudio(self.ready_event)
         last_queue_item_time = time.time()
-        while not self.stop_event.is_set() or not self.processing_queue.empty() or not self.worker_finished_event.is_set():
+        while (
+            not self.stop_event.is_set() or not self.processing_queue.empty() or not self.worker_finished_event.is_set()
+        ):
             try:
                 item = self.processing_queue.get(timeout=0.5)
                 last_queue_item_time = time.time()
@@ -137,7 +135,7 @@ class StreamWatcher:
                 if self.processing_queue.qsize() >= 10:
                     logger.warning(f"[processor] queue size is getting large: {self.processing_queue.qsize()} >= 10")
             except Empty:
-                if time.time() - last_queue_item_time > 10 * 60: # 10 minutes
+                if time.time() - last_queue_item_time > 10 * 60:  # 10 minutes
                     # Model will only be unloaded once. So there is no harm in calling it multiple times.
                     audio_processor.unload_model()
                 continue

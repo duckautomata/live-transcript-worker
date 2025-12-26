@@ -1,10 +1,11 @@
-from abc import ABC, abstractmethod
 import os
+from abc import ABC, abstractmethod
 from queue import Queue
 from threading import Event
 
-from src.live_transcript_worker.custom_types import StreamInfoObject
 from src.live_transcript_worker.config import Config
+from src.live_transcript_worker.custom_types import StreamInfoObject
+
 
 class AbstractWorker(ABC):
     """
@@ -18,12 +19,10 @@ class AbstractWorker(ABC):
 
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
         self.ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
-        self.buffer_size_seconds: int = Config.get_server_config().get(
-            "buffer_size_seconds", 6
-        )
+        self.buffer_size_seconds: int = Config.get_server_config().get("buffer_size_seconds", 6)
 
         # 1 fragment = 1 second
-        self.dash_stale_size = 60 
+        self.dash_stale_size = 60
 
         self.yt_audio_rate = 20_000
         self.ty_video_rate = 1_028_571
@@ -34,6 +33,5 @@ class AbstractWorker(ABC):
 
     @abstractmethod
     def start(self, info: StreamInfoObject) -> None:
-        """Starts working on the given url.
-        """
+        """Starts working on the given url."""
         pass

@@ -1,12 +1,12 @@
+import logging
 import os
 import signal
 import sys
 import threading
-import logging
 from datetime import datetime
 
-from src.live_transcript_worker.stream_watcher import StreamWatcher
 from src.live_transcript_worker.config import Config
+from src.live_transcript_worker.stream_watcher import StreamWatcher
 
 # Logger will be used for all modules under src/live_transcript_worker
 app_logger = logging.getLogger("src.live_transcript_worker")
@@ -16,9 +16,9 @@ log_path = os.path.join(project_root_dir, "tmp", f"{timestamp}.log")
 
 shutdown_event = threading.Event()
 
+
 def setup_logging():
-    """Logs to both console and file. Console is info and up only. File is debug and up.
-    """
+    """Logs to both console and file. Console is info and up only. File is debug and up."""
     app_logger.setLevel(logging.DEBUG)
     app_logger.propagate = False
 
@@ -27,10 +27,7 @@ def setup_logging():
         os.makedirs("tmp", exist_ok=True)
         file_handler = logging.FileHandler(log_path, mode="w")
         file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter(
-            "%(asctime)s %(levelname)-8s %(message)s",
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
+        file_formatter = logging.Formatter("%(asctime)s %(levelname)-8s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
         file_handler.setFormatter(file_formatter)
         app_logger.addHandler(file_handler)
 
@@ -40,6 +37,7 @@ def setup_logging():
         console_formatter = logging.Formatter("%(levelname)-8s %(message)s")
         console_handler.setFormatter(console_formatter)
         app_logger.addHandler(console_handler)
+
 
 def handle_args():
     if len(sys.argv) > 1:
@@ -55,11 +53,13 @@ def handle_args():
     Config.config_filename = argument
     Config.get_config()  # Used to verify that we are able to load the config before doing anything else
 
+
 def graceful_shutdown(signum, frame):
     """Signal handler to initiate a graceful shutdown."""
     signal_name = signal.Signals(signum).name
     app_logger.info(f"Received signal {signum} ({signal_name}). Initiating graceful shutdown.")
     shutdown_event.set()
+
 
 def main():
     # Setting up listener to listen to signal events

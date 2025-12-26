@@ -4,13 +4,16 @@ import marshal
 import os
 import shutil
 import time
-import httpx
-from urllib.parse import quote
 from datetime import datetime
+from urllib.parse import quote
+
+import httpx
+
 from src.live_transcript_worker.config import Config
 from src.live_transcript_worker.custom_types import Media, StreamInfoObject
 
 logger = logging.getLogger(__name__)
+
 
 class SingletonMeta(type):
     _instances = {}
@@ -31,9 +34,7 @@ class Storage(metaclass=SingletonMeta):
         server_config = Config.get_server_config()
         self.__enable_request = server_config.get("enabled", False)
         api_key = server_config.get("apiKey", "")
-        self.__headers = {
-            "X-API-Key": api_key.strip()
-        }
+        self.__headers = {"X-API-Key": api_key.strip()}
         self.__base_url = server_config.get("url", "http://localhost:8080")
         self.__enable_dump_media = server_config.get("enable_dump_media", False)
 
@@ -91,21 +92,29 @@ class Storage(metaclass=SingletonMeta):
 
         if self.__enable_request:
             url = f"{self.__base_url}/{info.key}"
-            logger.debug(f"[{info.key}][activate] sending request id={info.stream_id} title={info.stream_title} startTime={info.start_time} mediaType={info.media_type}")
+            logger.debug(
+                f"[{info.key}][activate] sending request id={info.stream_id} title={info.stream_title} startTime={info.start_time} mediaType={info.media_type}"
+            )
             storage_time = time.time() - start_time
             try:
                 response = httpx.get(
                     f"{url}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
                     headers=self.__headers,
-                    timeout=None
+                    timeout=None,
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
-                    logger.warning(f"[{info.key}][activate][{(storage_time):.3f}] Relay did not accept activation request. Response: {response.status_code} {response.text}")
+                    logger.warning(
+                        f"[{info.key}][activate][{(storage_time):.3f}] Relay did not accept activation request. Response: {response.status_code} {response.text}"
+                    )
                 else:
-                    logger.info(f"[{info.key}][activate][{(storage_time):.3f}] Stream {info.stream_id} successfully activated")
+                    logger.info(
+                        f"[{info.key}][activate][{(storage_time):.3f}] Stream {info.stream_id} successfully activated"
+                    )
             except httpx.RequestError as e:
-                logger.error(f"[{info.key}][activate][{(storage_time):.3f}] Unable to send activation request to relay: {e}")
+                logger.error(
+                    f"[{info.key}][activate][{(storage_time):.3f}] Unable to send activation request to relay: {e}"
+                )
 
     def deactivate(self, key: str, stream_id: str):
         """Sets stream status to not live if the stream id is the same as the current active id. Then sends new info to server.
@@ -123,18 +132,20 @@ class Storage(metaclass=SingletonMeta):
             url = f"{self.__base_url}/{key}"
             storage_time = time.time() - start_time
             try:
-                response = httpx.get(
-                    f"{url}/deactivate?id={quote(stream_id)}",
-                    headers=self.__headers,
-                    timeout=None
-                )
+                response = httpx.get(f"{url}/deactivate?id={quote(stream_id)}", headers=self.__headers, timeout=None)
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
-                    logger.warning(f"[{key}][deactivate][{(storage_time):.3f}] Relay did not accept deactivation request. Response: {response.status_code} {response.text}")
+                    logger.warning(
+                        f"[{key}][deactivate][{(storage_time):.3f}] Relay did not accept deactivation request. Response: {response.status_code} {response.text}"
+                    )
                 else:
-                    logger.info(f"[{key}][deactivate][{(storage_time):.3f}] Stream {stream_id} successfully deactivated")
+                    logger.info(
+                        f"[{key}][deactivate][{(storage_time):.3f}] Stream {stream_id} successfully deactivated"
+                    )
             except httpx.RequestError as e:
-                logger.error(f"[{key}][deactivate][{(storage_time):.3f}] Unable to send deactivation request to relay: {e}")
+                logger.error(
+                    f"[{key}][deactivate][{(storage_time):.3f}] Unable to send deactivation request to relay: {e}"
+                )
         else:
             # local only, so we should log
             logger.info(f"[{key}][deactivate] Stream {stream_id} successfully deactivated")
@@ -165,17 +176,14 @@ class Storage(metaclass=SingletonMeta):
             url = f"{self.__base_url}/{key}"
             storage_time = time.time() - storage_start_time
             try:
-                response = httpx.post(
-                    f"{url}/update",
-                    headers=self.__headers,
-                    json=updateData,
-                    timeout=None
-                )
+                response = httpx.post(f"{url}/update", headers=self.__headers, json=updateData, timeout=None)
                 storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
                     self.__upload(key, data)
                 elif response.status_code != 200:
-                    logger.warning(f"[{key}][update][{(storage_time):.3f}] Relay did not accept update request. Response: {response.status_code} {response.text}")
+                    logger.warning(
+                        f"[{key}][update][{(storage_time):.3f}] Relay did not accept update request. Response: {response.status_code} {response.text}"
+                    )
                 else:
                     logger.debug(f"[{key}][update][{(storage_time):.3f}] successfully sent {line}")
             except httpx.RequestError as e:
@@ -194,11 +202,13 @@ class Storage(metaclass=SingletonMeta):
             remaining_seconds = total_seconds % 3600
             minutes = remaining_seconds // 60
             seconds = remaining_seconds % 60
-            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}" if start_time > 0 else f"{datetime.fromtimestamp(line_time-start_time).strftime('%H:%M:%S')}"
+            timestamp = (
+                f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                if start_time > 0
+                else f"{datetime.fromtimestamp(line_time - start_time).strftime('%H:%M:%S')}"
+            )
             with open(self.__get_transcript_file(key), "a") as f:
-                f.write(
-                    f"[{timestamp}] {' '.join(line_text)}\n"
-                )
+                f.write(f"[{timestamp}] {' '.join(line_text)}\n")
             storage_time = time.time() - storage_start_time
             logger.debug(f"[{key}][update][{(storage_time):.3f}] successfully wrote {line}")
 
@@ -218,15 +228,12 @@ class Storage(metaclass=SingletonMeta):
             url = f"{self.__base_url}/{key}"
             storage_time = time.time() - start_time
             try:
-                response = httpx.post(
-                    f"{url}/upload",
-                    headers=self.__headers,
-                    json=data,
-                    timeout=None
-                )
+                response = httpx.post(f"{url}/upload", headers=self.__headers, json=data, timeout=None)
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
-                    logger.warning(f"[{key}][_upload][{(storage_time):.3f}] Relay did not accept upload request. Response: {response.status_code} {response.text}")
+                    logger.warning(
+                        f"[{key}][_upload][{(storage_time):.3f}] Relay did not accept upload request. Response: {response.status_code} {response.text}"
+                    )
                 else:
                     logger.info(f"[{key}][_upload][{(storage_time):.3f}] Uploaded entire state to server")
             except httpx.RequestError as e:
@@ -241,7 +248,7 @@ class Storage(metaclass=SingletonMeta):
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
         transcript_path = os.path.join(project_root_dir, "tmp", key, "transcript.text")
         return transcript_path
-    
+
     def __get_dump_folder(self, key: str):
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
         dump_path = os.path.join(project_root_dir, "tmp", key, "dump")
@@ -299,7 +306,7 @@ class Storage(metaclass=SingletonMeta):
                 logger.error(f"[{key}][clear_dump_folder] Error deleting dump folder {dump_folder}: {e}")
             except Exception as e:
                 logger.error(f"[{key}][clear_dump_folder] unknown error deleting dump foler {dump_folder}: {e}")
-        
+
         # Recreate the empty folder
         try:
             os.makedirs(dump_folder)
@@ -307,5 +314,5 @@ class Storage(metaclass=SingletonMeta):
             logger.error(f"[{key}][clear_dump_folder] Error recreating dump folder {dump_folder}: {e}")
         except Exception as e:
             logger.error(f"[{key}][clear_dump_folder] unknown error recreating dump foler {dump_folder}: {e}")
-        
+
         logger.debug(f"[{key}][clear_dump_folder] successfully cleared dump folder")

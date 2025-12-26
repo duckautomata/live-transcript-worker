@@ -1,16 +1,18 @@
 import io
+import json
 import logging
 import os
 import re
 import subprocess
-import json
 import time
+
 import av
 
 from src.live_transcript_worker.config import Config
 from src.live_transcript_worker.custom_types import Media, StreamInfoObject
 
 logger = logging.getLogger(__name__)
+
 
 class StreamHelper:
     @staticmethod
@@ -43,9 +45,7 @@ class StreamHelper:
             stdout, stderr = process.communicate(timeout=30)
 
             if process.returncode != 0:
-                raise Exception(
-                    f"yt-dlp metadata fetch failed (code {process.returncode}): {stderr}"
-                )
+                raise Exception(f"yt-dlp metadata fetch failed (code {process.returncode}): {stderr}")
 
             try:
                 metadata: dict = json.loads(stdout)
@@ -56,9 +56,7 @@ class StreamHelper:
                 info.is_live = metadata.get("is_live", False)
                 if info.is_live:
                     info.stream_id = metadata.get("id", "Unknown ID")
-                    info.stream_title = StreamHelper.remove_date(
-                        metadata.get("title", "Unknown Title")
-                    )
+                    info.stream_title = StreamHelper.remove_date(metadata.get("title", "Unknown Title"))
                     start_time = metadata.get("release_timestamp", 0)
                     if "twitch.tv" in url.lower():
                         info.stream_title = f"{metadata.get('display_id', 'Unknown Channel')} - {metadata.get('description', 'Unknown Title')}"
@@ -84,7 +82,7 @@ class StreamHelper:
             pass
 
         return info
-    
+
     @staticmethod
     def get_stream_stats_until_valid_start(url: str, n: int) -> StreamInfoObject:
         info: StreamInfoObject = StreamHelper.get_stream_stats(url)
@@ -93,7 +91,9 @@ class StreamHelper:
             return info
 
         while (info.start_time == "None" or info.start_time == "0" or info.start_time is None) and n > 0:
-            logger.warning(f"[stream_stats_valid] start_time is not valid. type: {type(info.start_time)}, value: {info.start_time}, n: {n}")
+            logger.warning(
+                f"[stream_stats_valid] start_time is not valid. type: {type(info.start_time)}, value: {info.start_time}, n: {n}"
+            )
             time.sleep(5)
             info = StreamHelper.get_stream_stats(url)
             n -= 1
@@ -102,7 +102,7 @@ class StreamHelper:
                 return info
 
         return info
-    
+
     @staticmethod
     def get_duration(audio: bytes):
         try:
@@ -112,7 +112,9 @@ class StreamHelper:
                     start_time_us = container.start_time
 
                     if duration_us is None:
-                        logger.warning("[audio_duration] Duration metadata not found in the stream.",)
+                        logger.warning(
+                            "[audio_duration] Duration metadata not found in the stream.",
+                        )
                         return 0.0
 
                     # Convert duration from microseconds to seconds
@@ -122,12 +124,12 @@ class StreamHelper:
 
                     if audio_duration < 0:
                         return duration_sec
-                    
+
                     return audio_duration
         except Exception:
             logger.error("[audio_duration] Invalid media data for buffer")
             return 0.0
-        
+
         return 0.0
 
     @staticmethod

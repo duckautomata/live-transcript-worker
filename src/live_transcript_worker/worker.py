@@ -1,12 +1,14 @@
 import logging
 from queue import Queue
 from threading import Event
-from src.live_transcript_worker.worker_buffered import MPEGBufferedWorker
-from src.live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
-from src.live_transcript_worker.worker_dash import DASHWorker
+
 from src.live_transcript_worker.custom_types import StreamInfoObject
+from src.live_transcript_worker.worker_buffered import MPEGBufferedWorker
+from src.live_transcript_worker.worker_dash import DASHWorker
+from src.live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
 
 logger = logging.getLogger(__name__)
+
 
 class Worker:
     """Main worker class. Manages all concrete worker classes.

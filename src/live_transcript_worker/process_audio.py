@@ -1,10 +1,10 @@
 import base64
 import gc
-from io import BytesIO
 import logging
+import time
+from io import BytesIO
 from math import floor
 from threading import Event
-import time
 
 from faster_whisper import WhisperModel
 
@@ -13,6 +13,7 @@ from src.live_transcript_worker.custom_types import Media, ProcessObject
 from src.live_transcript_worker.storage import Storage
 
 logger = logging.getLogger(__name__)
+
 
 class ProcessAudio(object):
     """
@@ -34,9 +35,7 @@ class ProcessAudio(object):
             compute_type = config.get("compute_type", "int8")
             download_root = "./models"
             logger.info(f"[load_model] Loading model {model} with device {device} using type {compute_type}...")
-            self.whisper_model = WhisperModel(
-                model, device, compute_type=compute_type, download_root=download_root
-            )
+            self.whisper_model = WhisperModel(model, device, compute_type=compute_type, download_root=download_root)
             logger.info("[load_model] Done.")
 
     def unload_model(self):
@@ -85,7 +84,9 @@ class ProcessAudio(object):
         else:
             duration_time_str = f"duration: {duration:.3f}"
 
-        logger.info(f"[{item.key}][process_audio] time: {(total_processing_time):.3f}, t_time:{transcription_time:.3f}, {duration_time_str}, size: {(len(raw_b64.encode('utf8')) / 1024.0):.3f} KiB")
+        logger.info(
+            f"[{item.key}][process_audio] time: {(total_processing_time):.3f}, t_time:{transcription_time:.3f}, {duration_time_str}, size: {(len(raw_b64.encode('utf8')) / 1024.0):.3f} KiB"
+        )
         self.storage.update(item.key, new_line, raw_b64)
 
     def transcribe(self, data: BytesIO) -> tuple[list[tuple[float, str]], float] | None:
@@ -99,7 +100,7 @@ class ProcessAudio(object):
         if self.whisper_model is None:
             self.load_model()
         try:
-            segments, info = self.whisper_model.transcribe( # type: ignore
+            segments, info = self.whisper_model.transcribe(  # type: ignore
                 data,
                 language="en",
                 vad_filter=True,

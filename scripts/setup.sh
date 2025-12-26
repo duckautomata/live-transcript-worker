@@ -63,6 +63,8 @@ echo -e "\nSetting up Python virtual environment..."
 if [ ! -d "$VENV_PATH" ]; then
     echo "   -> Creating virtual environment at '$VENV_PATH'..."
     "$PYTHON_CMD" -m venv "$VENV_PATH"
+    echo "   -> Upgrading pip..."
+    "$VENV_PATH/bin/pip" install --upgrade pip
 else
     echo "   -> Virtual environment already exists."
 fi
