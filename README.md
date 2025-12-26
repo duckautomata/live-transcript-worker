@@ -127,6 +127,19 @@ If you wish to create more configuration files (example: dev.yaml), then you can
 
 Logging is set up for the entire program, and everything should be logged. The console will print info and higher logs (everything but debug). On startup, a log file under `tmp/` will be created and will contain every log. In the event of an error, check this log file to see what went wrong.
 
+### Updating Packages
+Clean up pip
+- `pip freeze > requirements.txt`
+- `pip uninstall -r requirements.txt -y`
+
+Run pip install on the following packages
+- `faster-whisper`
+- `ruff`
+- `pyrefly`
+- `types-PyYAML`
+
+Set requirements with new versions
+- `pip freeze > requirements.txt`
 
 ## Docker
 
