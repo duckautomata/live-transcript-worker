@@ -1,6 +1,6 @@
 [project]
 name = "live-transcript-worker"
-version = "1.9"
+version = "1.10"
 description = "Live Transcript Worker"
 readme = "README.md"
 requires-python = ">=3.12"
