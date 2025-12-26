@@ -1,12 +1,13 @@
 # latest
-Using version [1.10](#10-2025-12-26)
+Using version [1.10](#110-2025-12-26)
 
 # Major version 1
-Using version [1.10](#10-2025-12-26)
+Using version [1.10](#110-2025-12-26)
 
 ## 1.10 (2025-12-26)
 **Important**
 - Added ruff linting and formatting
+- Added pyrefly type checking
 - Fixed bug where restarting DASH Worker on the same stream would duplicate the last fragments in the buffer.
 - Fixed bug that happened when dash/hsl sequence would restart at 1 when the stream died and restarted. We assumed none of the previous fragments would change. So it would do nothing until the new sequence caught up to the old sequence.
 
