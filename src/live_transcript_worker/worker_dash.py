@@ -73,7 +73,7 @@ class DASHWorker(AbstractWorker):
             return
 
         # Verification Logic.
-        if verification_backup_path:
+        if verification_backup_path and verification_target_filename:
             last_processed_seq, current_stream_time, process = self._verify_stream_continuity(
                 info,
                 fragment_dir,

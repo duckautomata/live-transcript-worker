@@ -20,6 +20,7 @@ numpy==2.4.0
 onnxruntime==1.23.2
 packaging==25.0
 protobuf==6.33.2
+pyrefly==0.46.1
 PyYAML==6.0.3
 ruff==0.14.10
 setuptools==80.9.0
@@ -28,4 +29,5 @@ sympy==1.14.0
 tokenizers==0.22.1
 tqdm==4.67.1
 typer-slim==0.21.0
+types-PyYAML==6.0.12.20250915
 typing_extensions==4.15.0

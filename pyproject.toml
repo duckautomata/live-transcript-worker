@@ -28,6 +28,16 @@ unfixable = []
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[tool.pyrefly]
+project-includes = ["src", "main.py"]
+project-excludes = ["**/.[!/.]*", "**/tests"]
+search-path = ["."]
+site-package-path = [".venv/lib/python3.12/site-packages"]
+python-platform = "linux"
+python-version = "3.12"
+python-interpreter-path = ".venv/bin/python"
+ignore-errors-in-generated-code = true
+
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
 quote-style = "double"

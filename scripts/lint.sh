@@ -8,3 +8,6 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 echo "Running Ruff linter..."
 # Check only
 ruff check "$PROJECT_ROOT"
+
+echo "Running Pyrefly linter..."
+pyrefly check
