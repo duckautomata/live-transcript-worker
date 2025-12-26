@@ -43,20 +43,41 @@ class DASHWorker(AbstractWorker):
         # Load state to handle resilience
         last_processed_seq, current_stream_time = self._load_state(state_file, info.stream_id, initial_start_time)
 
+        # ex: /tmp/key/fragments/test.f140.Frag1.bak
+        verification_backup_path = None
+        # ex: test.f140.Frag1
+        verification_target_filename = None
+
         # If we didn't recover a state (new stream or first run), perform cleanup of old fragments
         if last_processed_seq == 0 and current_stream_time == initial_start_time:
             logger.info(f"[{info.key}][DASHWorker] New stream detected or no state found. Cleaning up old fragments.")
-            self._cleanup(fragment_dir)
+            self._cleanup(info, fragment_dir)
+            
             os.makedirs(fragment_dir, exist_ok=True)
+            verification_backup_path, verification_target_filename = None, None
         else:
             logger.info(f"[{info.key}][DASHWorker] Resuming from sequence {last_processed_seq} at time {current_stream_time}")
             os.makedirs(fragment_dir, exist_ok=True)
+            
+            verification_backup_path, verification_target_filename = self._setup_verification(info, fragment_dir)
 
         # Start yt-dlp process
         process = self.create_process(info, fragment_dir)
         if process is None:
             logger.error(f"[{info.key}][DASHWorker] process failed to start.")
             return
+
+        # Verification Logic. 
+        if verification_backup_path:
+            last_processed_seq, current_stream_time, process = self._verify_stream_continuity(
+                info, fragment_dir, state_file, process, 
+                verification_backup_path, verification_target_filename, 
+                last_processed_seq, current_stream_time
+            )
+            if process is None or process.poll() is not None:
+                logger.error(f"[{info.key}][DASHWorker] Process failed/died during verification reset.")
+                return
+
 
         # Start monitoring loop
         self._monitor_loop(info, fragment_dir, state_file, process, last_processed_seq, current_stream_time)
@@ -118,12 +139,156 @@ class DASHWorker(AbstractWorker):
             logger.error(f"[{info.key}][DASHWorker] failed to create process: {e}")
         return process
 
-    def _cleanup(self, fragment_dir: str):
+    def _setup_verification(self, info: StreamInfoObject, fragment_dir: str) -> tuple[str | None, str | None]:
+        """
+        Sets up the verification process by identifying and backing up the first fragment.
+        Returns: (verification_backup_path, verification_target_filename)
+        """
+        # Logic: Find Frag1 with lowest format ID (Audio)
+        frag1_files = glob.glob(os.path.join(fragment_dir, "*Frag1*"))
+        frag1_candidates = []
+        for f in frag1_files:
+            if "Frag1" in f and not f.endswith(".part") and not f.endswith(".ytdl"):
+                frag1_candidates.append(f)
+        
+        if not frag1_candidates:
+            logger.warning(f"[{info.key}][DASHWorker] No Frag1 found for verification. Skipping continuity check.")
+            return None, None
+        
+        # Select the one with lowest format ID.
+        frag1_candidates.sort() # lexicographical sort should put f140 before f299
+        selected_frag = frag1_candidates[0] # /tmp/key/fragments/example-Frag1
+        verification_target_filename = os.path.basename(selected_frag) # example-Frag1
+        verification_backup_path = selected_frag + ".bak" # /tmp/key/fragments/example-Frag1.bak
+        
+        logger.info(f"[{info.key}][DASHWorker] Selected {verification_target_filename} for continuity verification.")
+        
+        try:
+            shutil.move(selected_frag, verification_backup_path)
+            return verification_backup_path, verification_target_filename
+        except Exception as e:
+            logger.warning(f"[{info.key}][DASHWorker] Add verification setup failed: {e}")
+            return None, None
+
+    def _is_content_identical(self, file1, file2, buffer_size=65536):
+        """
+        Performs a strict byte-to-byte comparison.
+        buffer_size: 64KB is generally optimal for modern disk I/O.
+        """
+        # 1. Quick size check (Short-circuit)
+        if os.path.getsize(file1) != os.path.getsize(file2):
+            return False
+
+        # 2. Byte-by-byte comparison in chunks
+        with open(file1, 'rb') as f1, open(file2, 'rb') as f2:
+            while True:
+                b1 = f1.read(buffer_size)
+                b2 = f2.read(buffer_size)
+
+                if b1 != b2:
+                    return False
+                
+                if not b1: # Reached end of files simultaneously
+                    return True
+
+
+    def _verify_stream_continuity(self, info: StreamInfoObject, fragment_dir: str, state_file: str, 
+                                  process: subprocess.Popen, verification_backup_path: str, 
+                                  verification_target_filename: str, last_processed_seq: int, 
+                                  current_stream_time: float) -> tuple[int, float, subprocess.Popen]:
+        """
+        Verifies if the stream continuity is preserved by checking the new fragment against the backup.
+        If the stream continuity is not preserved, the process is restarted with a clean fragment directory.
+        
+        Returns: (updated_last_processed_seq, updated_current_stream_time, active_process)
+        """
+        logger.info(f"[{info.key}][DASHWorker] Verifying stream continuity by checking Fragment 1...")
+        
+        # Wait for new fragment 1 to download (Max 30 seconds)
+        start_wait = time.time()
+        new_frag_path = None
+        
+        while time.time() - start_wait < 30:
+            if process.poll() is not None:
+                logger.error(f"[{info.key}][DASHWorker] Process died during verification.")
+                break
+            
+            target_path = os.path.join(fragment_dir, verification_target_filename)
+            if os.path.exists(target_path):
+                    new_frag_path = target_path
+                    break
+            time.sleep(1)
+        
+        if new_frag_path is None:
+            # Timeout
+            logger.warning(f"[{info.key}][DASHWorker] Verification Timeout: New Fragment 1 did not appear. Assuming stream is far ahead (No reset).")
+            # Restore backup
+            target_path = os.path.join(fragment_dir, verification_target_filename)
+            shutil.move(verification_backup_path, target_path)
+            return last_processed_seq, current_stream_time, process
+
+        # Compare
+        try:
+            if self._is_content_identical(new_frag_path, verification_backup_path):
+                logger.info(f"[{info.key}][DASHWorker] Verification Successful: Stream matches. Resuming...")
+                os.remove(verification_backup_path)
+                return last_processed_seq, current_stream_time, process
+        except Exception as e:
+            logger.error(f"[{info.key}][DASHWorker] Error comparing verification files: {e}")
+            logger.warning(f"[{info.key}][DASHWorker] Verification error fallback: restoring backup.")
+            shutil.move(verification_backup_path, new_frag_path) 
+            return last_processed_seq, current_stream_time, process
+
+        # Content is different! Sequence Reset detected.
+        logger.warning(f"[{info.key}][DASHWorker] Verification Failed: Stream content mismatch. Sequence reset detected!")
+        
+        # We reset the sequence number to 0 since we are starting from the beginning.
+        # But we keep the current stream time since the previous data is still valid and will still be in the vod.
+        last_processed_seq = 0
+
+        logger.info(f"[{info.key}][DASHWorker] Terminating old process and cleaning up...")
+        if process:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        
+        # Full Cleanup
+        self._cleanup(info, fragment_dir)
+        os.makedirs(fragment_dir, exist_ok=True)
+        
+        if os.path.exists(verification_backup_path):
+            try: os.remove(verification_backup_path)
+            except: pass
+
+        self._save_state(state_file, info.stream_id, last_processed_seq, current_stream_time)
+        
+        logger.info(f"[{info.key}][DASHWorker] Starting new yt-dlp process...")
+        new_process = self.create_process(info, fragment_dir)
+        if new_process is None:
+            logger.error(f"[{info.key}][DASHWorker] Failed to restart process after sequence reset.")
+            return last_processed_seq, current_stream_time, process 
+        
+        return last_processed_seq, current_stream_time, new_process
+                
+
+    def _cleanup(self, info: StreamInfoObject, fragment_dir: str):
         if os.path.exists(fragment_dir):
             try:
                 shutil.rmtree(fragment_dir)
             except Exception as e:
-                logger.warning(f"[DASHWorker] failed to cleanup dir {fragment_dir}: {e}")
+                logger.warning(f"[{info.key}][DASHWorker] failed to cleanup dir {fragment_dir}: {e}")
+        
+        if info.stream_id:
+            # Additional cleanup for specific issue where stale files might linger
+            try:
+                files = glob.glob(os.path.join(fragment_dir, f"{info.stream_id}*"))
+                for f in files:
+                        try:
+                            if os.path.isfile(f): os.remove(f)
+                        except: pass
+            except: pass
 
     def _get_chunk_duration(self, file_path: str) -> float:
         """
