@@ -20,9 +20,7 @@ class AbstractWorker(ABC):
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
         self.ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
         self.buffer_size_seconds: int = Config.get_server_config().get("buffer_size_seconds", 6)
-
-        # 1 fragment = 1 second
-        self.dash_stale_size = 60
+        self.stale_time_threshold: int = Config.get_server_config().get("stale_time_threshold", 60)
 
         self.yt_audio_rate = 20_000
         self.ty_video_rate = 1_028_571

@@ -7,16 +7,34 @@ class Media:
 class ProcessObject:
     """Object type used to hold data ready to be processed"""
 
-    raw: bytes
+    raw: bytes | None
     audio_start_time: float
     key: str
     media_type: str
 
-    def __init__(self, raw: bytes, audio_start_time: float, key: str, media_type: str):
+    def __init__(self, raw: bytes | None, audio_start_time: float, key: str, media_type: str):
         self.raw = raw
         self.audio_start_time = audio_start_time
         self.key = key
         self.media_type = media_type
+
+
+class MediaUploadObject:
+    """Object type used to hold data ready to be uploaded"""
+
+    key: str
+    id: int
+    path: str
+
+    def __init__(self, key: str, id: int, path: str):
+        self.key = key
+        self.id = id
+        self.path = path
+
+    def __eq__(self, other):
+        if not isinstance(other, MediaUploadObject):
+            return NotImplemented
+        return self.key == other.key and self.id == other.id and self.path == other.path
 
 
 class StreamInfoObject:

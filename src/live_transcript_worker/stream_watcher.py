@@ -75,6 +75,7 @@ class StreamWatcher:
         self.worker_finished_event.set()
         if self.process_thread.is_alive():
             self.process_thread.join(timeout=30)
+        self.storage.wait_for_uploads(timeout=30)
 
     def watcher(self, key: str, urls: list[str]):
         """

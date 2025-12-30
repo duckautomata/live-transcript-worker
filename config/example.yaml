@@ -21,8 +21,8 @@ server:
   # How long each line will be in seconds
   buffer_size_seconds: 6
 
-  # will save the raw media data to file so that you can debug it. Dump folder is tmp/{key}/dump
-  enable_dump_media: false
+  # How long we will wait for a fragment to be ready before processing it with partial data.
+  stale_time_threshold: 60
 
 transcription:
   # list of models can be found here https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L12

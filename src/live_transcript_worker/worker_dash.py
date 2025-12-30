@@ -406,6 +406,10 @@ class DASHWorker(AbstractWorker):
 
         logger.info(f"[{info.key}][DASHWorker] Monitoring {fragment_dir} (Mode: {info.media_type})")
 
+        # Track staleness for the current sequence
+        current_processing_seq: int | None = None
+        current_seq_start_time: float = 0.0
+
         while not self.stop_event.is_set():
             if process.poll() is not None:
                 logger.info(f"[{info.key}][DASHWorker] yt-dlp process ended.")
@@ -446,11 +450,17 @@ class DASHWorker(AbstractWorker):
             # Process sequences in order
             sequences = sorted(pending_fragments.keys())
 
-            # Identify the latest available sequence to check for staleness
-            latest_seq = sequences[-1]
-
             for seq in sequences:
+                if self.stop_event.is_set():
+                    logger.info(f"[{info.key}][DASHWorker] stop event set, exiting.")
+                    break
+
                 files_for_seq = pending_fragments[seq]
+
+                # Update current processing sequence tracker
+                if current_processing_seq != seq:
+                    current_processing_seq = seq
+                    current_seq_start_time = time.time()
 
                 is_ready = False
 
@@ -466,11 +476,12 @@ class DASHWorker(AbstractWorker):
                     # Just need 1 file (the audio track)
                     is_ready = len(files_for_seq) >= 1
 
-                # If the sequence is not ready but is "stale" (we are far ahead),
+                # If the sequence is not ready but is "stale" (we have been waiting too long),
                 # force it to process with whatever partial data we have.
-                if not is_ready and latest_seq > seq + self.dash_stale_size:
+                elapsed_time = time.time() - current_seq_start_time
+                if not is_ready and elapsed_time > self.stale_time_threshold:
                     logger.warning(
-                        f"[{info.key}][DASHWorker] Sequence {seq} is incomplete (files: {len(files_for_seq)}) but stale (Latest: {latest_seq}). Processing with partial data."
+                        f"[{info.key}][DASHWorker] Sequence {seq} is incomplete (files: {len(files_for_seq)}) but stale (Elapsed: {elapsed_time:.1f}s). Processing with partial data."
                     )
                     is_ready = True
 

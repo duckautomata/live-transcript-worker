@@ -37,6 +37,17 @@ python-version = "3.12"
 python-interpreter-path = ".venv/bin/python"
 ignore-errors-in-generated-code = true
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+pythonpath = ["src"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
+
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
 quote-style = "double"

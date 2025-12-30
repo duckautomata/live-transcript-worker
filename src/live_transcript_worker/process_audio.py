@@ -1,4 +1,3 @@
-import base64
 import gc
 import logging
 import time
@@ -47,6 +46,9 @@ class ProcessAudio(object):
             logger.info("[unload_model] Done.")
 
     def process_audio(self, item: ProcessObject):
+        if item.raw is None:
+            # No audio to process
+            return
         if self.whisper_model is None:
             self.load_model()
         start_time = time.time()
@@ -75,9 +77,13 @@ class ProcessAudio(object):
             "segments": new_segments,
         }
 
-        raw_b64 = ""
+        size = 0
         if item.media_type != Media.NONE:
-            raw_b64 = base64.b64encode(item.raw).decode("utf-8")
+            size = len(item.raw)
+        else:
+            # We won't upload any media to the server, so we set it to None.
+            del item.raw
+            item.raw = None
         total_processing_time = time.time() - start_time
         if duration < 0:
             duration_time_str = "ERROR"
@@ -85,9 +91,9 @@ class ProcessAudio(object):
             duration_time_str = f"duration: {duration:.3f}"
 
         logger.info(
-            f"[{item.key}][process_audio] time: {(total_processing_time):.3f}, t_time:{transcription_time:.3f}, {duration_time_str}, size: {(len(raw_b64.encode('utf8')) / 1024.0):.3f} KiB"
+            f"[{item.key}][process_audio] time: {(total_processing_time):.3f}, t_time:{transcription_time:.3f}, {duration_time_str}, size: {(size / 1024.0):.3f} KiB"
         )
-        self.storage.update(item.key, new_line, raw_b64)
+        self.storage.add_new_line(item.key, new_line, item.raw)
 
     def transcribe(self, data: BytesIO) -> tuple[list[tuple[float, str]], float] | None:
         """Transcribes the audio into segments.

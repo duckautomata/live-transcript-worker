@@ -1,8 +1,17 @@
 # latest
-Using version [1.10](#110-2025-12-26)
+Using version [2.0](#20-2025-12-30)
+
+# Major version 2
+Using version [2.0](#20-2025-12-30)
 
 # Major version 1
 Using version [1.10](#110-2025-12-26)
+
+## 2.0 (2025-12-30)
+**Important**
+- Api has been changed. Media is now uploaded separately from transcript line. This means media will run in a separate thread to not block transcription.
+- Added tests
+- Change config structure
 
 ## 1.10 (2025-12-26)
 **Important**
