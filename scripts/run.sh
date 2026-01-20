@@ -22,12 +22,12 @@ VENV_PATH=".venv"
 PYTHON_EXE="$VENV_PATH/bin/python"
 PYTHON_SCRIPT="main.py"
 CONFIG_DIR="config"
-DEFAULT_CONFIG_FILE="config.yaml"
+DEFAULT_CONFIG_FILE="config"
 
 # --- Determine Configuration File ---
 CONFIG_FILE_NAME=""
 if [ "$#" -eq 0 ]; then
-    echo "No configuration file specified, defaulting to '$DEFAULT_CONFIG_FILE'."
+    echo "No configuration specified, defaulting to '$DEFAULT_CONFIG_FILE'."
     CONFIG_FILE_NAME="$DEFAULT_CONFIG_FILE"
 elif [ "$#" -eq 1 ]; then
     CONFIG_FILE_NAME="$1"
@@ -38,7 +38,7 @@ else
     exit 1
 fi
 
-CONFIG_FILE_PATH="$CONFIG_DIR/$CONFIG_FILE_NAME"
+CONFIG_FILE_PATH="$CONFIG_DIR/$CONFIG_FILE_NAME.yaml"
 
 # Check if the determined config file exists
 if [ ! -f "$CONFIG_FILE_PATH" ]; then
@@ -74,7 +74,7 @@ fi
 # --- Run Python Script ---
 if [ -f "$PYTHON_SCRIPT" ]; then
     echo -e "\nRunning $PYTHON_SCRIPT..."
-    python "$PYTHON_SCRIPT" "$CONFIG_FILE_NAME"
+    python "$PYTHON_SCRIPT" "$CONFIG_FILE_NAME.yaml"
 else
     echo "Error: Main script '$PYTHON_SCRIPT' not found."
     exit 1

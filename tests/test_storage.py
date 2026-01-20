@@ -109,7 +109,7 @@ def test_deactivate(storage, mocker):
 
 
 def test_add_new_line(storage, mocker, tmp_path):
-    mocker.patch.object(storage, "_file_to_dict", return_value={"transcript": [{"id": 0}], "startTime": 0})
+    mocker.patch.object(storage, "_file_to_dict", return_value={"activeId": "a12", "transcript": [{"id": 0}], "startTime": 0})
     mock_dict_to_file = mocker.patch.object(storage, "_dict_to_file")
     mocker.patch("httpx.post", return_value=MagicMock(status_code=200))
 
@@ -133,16 +133,16 @@ def test_add_new_line(storage, mocker, tmp_path):
     assert updated_data["transcript"][-1]["mediaAvailable"] is False
 
     # Verify file saved
-    media_file = queue_folder / "media_1.bin"
+    media_file = queue_folder / "media_stream_id=a12 line_id=1.bin"
     assert media_file.exists()
     assert media_file.read_bytes() == raw_bytes
 
     # Verify enqueued
-    storage._Storage__upload_queue.put.assert_called_with(MediaUploadObject("key", 1, str(media_file)))
+    storage._Storage__upload_queue.put.assert_called_with(MediaUploadObject("key", "a12", 1, str(media_file)))
 
 
 def test_add_new_line_sync_error(storage, mocker, tmp_path):
-    mocker.patch.object(storage, "_file_to_dict", return_value={"transcript": [], "startTime": 0})
+    mocker.patch.object(storage, "_file_to_dict", return_value={"activeId": "345", "transcript": [], "startTime": 0})
     mocker.patch.object(storage, "_dict_to_file")
     mocker.patch("httpx.post", return_value=MagicMock(status_code=409))
     mock_sync = mocker.patch.object(storage, "sync_server")
@@ -159,12 +159,12 @@ def test_add_new_line_sync_error(storage, mocker, tmp_path):
 
 def test_media_upload_worker(storage, mocker, tmp_path):
     # Create a real file
-    file_path = tmp_path / "media.bin"
+    file_path = tmp_path / "media_stream_id=123 line_id=2.bin"
     file_path.write_bytes(b"content")
 
     # Mock queue.get to return item then raise exception to break loop
     storage._Storage__upload_queue = MagicMock()
-    storage._Storage__upload_queue.get.side_effect = [MediaUploadObject("key", 1, str(file_path)), Exception("Stop Loop")]
+    storage._Storage__upload_queue.get.side_effect = [MediaUploadObject("key", "123", 2, str(file_path)), Exception("Stop Loop")]
 
     mock_post = mocker.patch("httpx.post", return_value=MagicMock(status_code=200))
 
@@ -205,13 +205,13 @@ def test_process_old_queue_files_bfs_uneven(mocker, tmp_path, mock_config):
     (tmp_path / "test1" / "queue").mkdir(parents=True)
     (tmp_path / "test2" / "queue").mkdir(parents=True)
 
-    # Create files for test1: 3 files (id 10, 11, 12)
-    (tmp_path / "test1" / "queue" / "media_10.bin").write_bytes(b"t1-10")
-    (tmp_path / "test1" / "queue" / "media_11.bin").write_bytes(b"t1-11")
-    (tmp_path / "test1" / "queue" / "media_12.bin").write_bytes(b"t1-12")
+    # Create files for test1: 3 files (id 10, 11, 12) media_stream_id=abc line_id=10.bin
+    (tmp_path / "test1" / "queue" / "media_stream_id=abc line_id=10.bin").write_bytes(b"t1-10")
+    (tmp_path / "test1" / "queue" / "media_stream_id=abc line_id=11.bin").write_bytes(b"t1-11")
+    (tmp_path / "test1" / "queue" / "media_stream_id=abc line_id=12.bin").write_bytes(b"t1-12")
 
     # Create files for test2: 1 file (id 5)
-    (tmp_path / "test2" / "queue" / "media_5.bin").write_bytes(b"t2-5")
+    (tmp_path / "test2" / "queue" / "media_stream_id=def line_id=5.bin").write_bytes(b"t2-5")
 
     # Clear current queue (it was populated in __init__)
     while not storage._Storage__upload_queue.empty():

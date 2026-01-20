@@ -2,6 +2,7 @@ import logging
 import marshal
 import os
 import queue
+import re
 import shutil
 import threading
 import time
@@ -164,6 +165,7 @@ class Storage(metaclass=SingletonMeta):
         storage_start_time = time.time()
         data = self._file_to_dict(key)
         transcript: list = data["transcript"]
+        stream_id: str = data["activeId"]
         last_id = -1
         if len(transcript) > 0:
             last_id = transcript[-1]["id"]
@@ -177,12 +179,12 @@ class Storage(metaclass=SingletonMeta):
             url = f"{self.__base_url}/{key}"
             storage_time = time.time() - storage_start_time
             try:
-                response = httpx.post(f"{url}/line", headers=self.__headers, json=line, timeout=None)
+                response = httpx.post(f"{url}/line/{stream_id}", headers=self.__headers, json=line, timeout=None)
                 storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
                     self.sync_server(key, data)
                     # Add media to queue after sync so that this line's media doesn't get missed.
-                    self._enqueue_media(key, line["id"], raw_bytes)
+                    self._enqueue_media(key, stream_id, line["id"], raw_bytes)
                 elif response.status_code != 200:
                     logger.warning(
                         f"[{key}][add_new_line][{(storage_time):.3f}] Relay did not accept line request. Response: {response.status_code} {response.text}"
@@ -190,7 +192,7 @@ class Storage(metaclass=SingletonMeta):
                 else:
                     logger.debug(f"[{key}][add_new_line][{(storage_time):.3f}] successfully sent {line}")
                     # We need to enqueue after the line is sent so that the server bc the server needs the line to exist before it can add the media
-                    self._enqueue_media(key, line["id"], raw_bytes)
+                    self._enqueue_media(key, stream_id, line["id"], raw_bytes)
             except httpx.RequestError as e:
                 logger.error(f"Unable to send line request to relay: {e}")
         else:
@@ -278,18 +280,18 @@ class Storage(metaclass=SingletonMeta):
         except Exception:
             pass
 
-    def _enqueue_media(self, key: str, line_id: int, raw_bytes: bytes | None):
+    def _enqueue_media(self, key: str, stream_id: str, line_id: int, raw_bytes: bytes | None):
         """Saves media to disk and enqueues it for upload"""
 
         if not raw_bytes or len(raw_bytes) == 0:
             return
 
         queue_folder = self._get_queue_folder(key)
-        media_path = os.path.join(queue_folder, f"media_{line_id}.bin")
+        media_path = os.path.join(queue_folder, f"media_stream_id={stream_id} line_id={line_id}.bin")
         try:
             with open(media_path, "wb") as f:
                 f.write(raw_bytes)
-            new_media = MediaUploadObject(key, line_id, media_path)
+            new_media = MediaUploadObject(key, stream_id, line_id, media_path)
             self.__upload_queue.put(new_media)
         except Exception as e:
             logger.error(f"[{key}][enqueue_media] Error saving media to disk: {e}")
@@ -327,7 +329,9 @@ class Storage(metaclass=SingletonMeta):
                     try:
                         with open(item.path, "rb") as f:
                             files = {"file": f}
-                            response = httpx.post(f"{url}/media/{item.id}", headers=self.__headers, files=files, timeout=None)
+                            response = httpx.post(
+                                f"{url}/media/{item.stream_id}/{item.id}", headers=self.__headers, files=files, timeout=None
+                            )
                         storage_time = time.time() - start_time
                         if response.status_code != 200:
                             logger.warning(
@@ -352,7 +356,7 @@ class Storage(metaclass=SingletonMeta):
         if not streamers:
             return
 
-        all_keys_files: dict[str, list[tuple[int, str]]] = {}
+        all_keys_files: dict[str, list[tuple[int, str, str]]] = {}
         for streamer in streamers:
             key: str | None = streamer.get("key")
             if not key:
@@ -361,12 +365,16 @@ class Storage(metaclass=SingletonMeta):
             if not os.path.exists(queue_folder) or not os.path.isdir(queue_folder):
                 continue
 
-            files: list[tuple[int, str]] = []
+            files: list[tuple[int, str, str]] = []
             for filename in os.listdir(queue_folder):
                 if filename.startswith("media_") and filename.endswith(".bin"):
                     try:
-                        line_id = int(filename[6:-4])
-                        files.append((line_id, os.path.join(queue_folder, filename)))
+                        pattern = r"media_stream_id=(.*)\sline_id=(.*)\.bin"
+                        match = re.search(pattern, filename)
+                        if match:
+                            stream_id = match.group(1)
+                            line_id = int(match.group(2))
+                            files.append((line_id, stream_id, os.path.join(queue_folder, filename)))
                     except ValueError:
                         continue
 
@@ -384,9 +392,9 @@ class Storage(metaclass=SingletonMeta):
         for i in range(max_files):
             for key in sorted_keys:
                 if i < len(all_keys_files[key]):
-                    line_id, path = all_keys_files[key][i]
+                    line_id, stream_id, path = all_keys_files[key][i]
                     logger.info(f"[{key}][storage] Enqueuing old media file: {path}")
-                    self.__upload_queue.put(MediaUploadObject(key, line_id, path))
+                    self.__upload_queue.put(MediaUploadObject(key, stream_id, line_id, path))
 
     def wait_for_uploads(self, timeout: float = 30):
         """Waits for the upload queue to be empty.

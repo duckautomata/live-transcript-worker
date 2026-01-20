@@ -1,11 +1,16 @@
 # latest
-Using version [2.0](#20-2025-12-30)
+Using version [2.1](#21-2026-01-20)
 
 # Major version 2
-Using version [2.0](#20-2025-12-30)
+Using version [2.1](#21-2026-01-20)
 
 # Major version 1
 Using version [1.10](#110-2025-12-26)
+
+## 2.1 (2026-01-20)
+**Important**
+- Changed media upload url
+- now send stream id with media so the server knows what stream it's for.
 
 ## 2.0 (2025-12-30)
 **Important**

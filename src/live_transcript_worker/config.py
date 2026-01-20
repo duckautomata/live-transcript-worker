@@ -22,19 +22,15 @@ class Config:
         except FileNotFoundError:
             logger.critical(f"Configuration file '{Config.config_filename}' not found.")
             sys.exit(1)
-            return None
         except yaml.YAMLError as e:
             logger.critical(f"Error parsing YAML file '{Config.config_filename}': {e}")
             sys.exit(1)
-            return None
         except ImportError:
             logger.critical("PyYAML library not found for loading. Please install it: pip install PyYAML")
             sys.exit(1)
-            return None
         except Exception as e:
             logger.critical(f"An error occurred while loading the config: {e}")
             sys.exit(1)
-            return None
 
     @staticmethod
     def get_server_config() -> dict[str, Any]:

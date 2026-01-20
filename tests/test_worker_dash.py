@@ -132,7 +132,7 @@ def test_monitor_loop(dash_worker, mocker):
     mocker.patch("builtins.open", mocker.mock_open(read_data=b"data"))
     mocker.patch("os.remove")
 
-    info = StreamInfoObject(url="url", key="key", media_type=Media.AUDIO)
+    info = StreamInfoObject(url="url", stream_id="b12", key="key", media_type=Media.AUDIO)
     process = MagicMock()
     process.poll.return_value = None
 

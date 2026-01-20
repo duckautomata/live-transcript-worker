@@ -23,18 +23,20 @@ class MediaUploadObject:
     """Object type used to hold data ready to be uploaded"""
 
     key: str
+    stream_id: str
     id: int
     path: str
 
-    def __init__(self, key: str, id: int, path: str):
+    def __init__(self, key: str, stream_id: str, id: int, path: str):
         self.key = key
+        self.stream_id = stream_id
         self.id = id
         self.path = path
 
     def __eq__(self, other):
         if not isinstance(other, MediaUploadObject):
             return NotImplemented
-        return self.key == other.key and self.id == other.id and self.path == other.path
+        return self.key == other.key and self.stream_id == other.stream_id and self.id == other.id and self.path == other.path
 
 
 class StreamInfoObject:
