@@ -1,11 +1,14 @@
 # latest
-Using version [2.1](#21-2026-01-20)
+Using version [2.2](#22-2026-01-29)
 
 # Major version 2
-Using version [2.1](#21-2026-01-20)
+Using version [2.2](#22-2026-01-29)
 
 # Major version 1
 Using version [1.10](#110-2025-12-26)
+
+## 2.2 (2026-01-29)
+- Updated yt-dlp deps.
 
 ## 2.1 (2026-01-20)
 **Important**
