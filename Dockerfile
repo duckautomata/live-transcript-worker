@@ -1,5 +1,8 @@
 # NVIDIA base image
 FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04
+ARG CACHEBUST=1
+ARG APP_VERSION="unknown"
+ARG BUILD_DATE="unknown"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -18,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 # Install Deno (needed for latest yt-dlp version)
 # We set DENO_INSTALL to /usr/local so the binary lands in /usr/local/bin
 # which is in the default PATH and accessible to all users.
-RUN export DENO_INSTALL=/usr/local && \
+RUN echo "Cache bust: ${CACHEBUST}" && export DENO_INSTALL=/usr/local && \
     curl -fsSL https://deno.land/install.sh | sh
 
 # Setting up app
@@ -28,10 +31,11 @@ USER 1000
 RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 COPY --chown=1000:1000 requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN echo "Cache bust: ${CACHEBUST}" && pip install --no-cache-dir -r requirements.txt
 
 # Install yt-dlp binary
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/bin/yt-dlp && \
+RUN echo "Cache bust: ${CACHEBUST}" && \
+    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/bin/yt-dlp && \
     chmod a+rx /app/bin/yt-dlp && \
     /app/bin/yt-dlp -U
 
@@ -41,8 +45,6 @@ COPY --chown=1000:1000 src src
 
 VOLUME ["/app/tmp", "/app/models"]
 
-ARG APP_VERSION="unknown"
-ARG BUILD_DATE="unknown"
 ENV APP_VERSION=${APP_VERSION}
 ENV BUILD_DATE=${BUILD_DATE}
 

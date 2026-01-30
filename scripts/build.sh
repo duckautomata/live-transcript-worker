@@ -67,6 +67,7 @@ echo "Building Docker image..."
 if ! $DOCKER_CMD build \
     --build-arg APP_VERSION="${VERSION}" \
     --build-arg BUILD_DATE="${BUILD_DATE}" \
+    --build-arg CACHEBUST="${BUILD_DATE}" \
     -t "${SPECIFIC_TAG}" \
     -t "${MAJOR_TAG}" \
     -t "${LATEST_TAG}" \
