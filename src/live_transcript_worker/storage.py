@@ -39,6 +39,14 @@ class Storage(metaclass=SingletonMeta):
         self.__headers = {"X-API-Key": api_key.strip()}
         self.__base_url = server_config.get("url", "http://localhost:8080")
 
+        # Initialize persistent client with timeouts disabled
+        # and default headers/base_url
+        self.client = httpx.Client(
+            base_url=self.__base_url,
+            headers=self.__headers,
+            timeout=None
+        )
+
         self.__upload_queue: queue.Queue[MediaUploadObject] = queue.Queue()
         self._process_old_queue_files()
         threading.Thread(target=self._media_upload_worker, daemon=True).start()
@@ -102,16 +110,14 @@ class Storage(metaclass=SingletonMeta):
             self._dict_to_file(info.key, data)
 
         if self.__enable_request:
-            url = f"{self.__base_url}/{info.key}"
             logger.debug(
                 f"[{info.key}][activate] sending request id={info.stream_id} title={info.stream_title} startTime={info.start_time} mediaType={info.media_type}"
             )
             storage_time = time.time() - start_time
             try:
-                response = httpx.post(
-                    f"{url}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
-                    headers=self.__headers,
-                    timeout=None,
+                # Using persistent client
+                response = self.client.post(
+                    f"/{info.key}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}"
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -136,10 +142,9 @@ class Storage(metaclass=SingletonMeta):
         self._dict_to_file(key, data)
 
         if self.__enable_request and stream_id != "":
-            url = f"{self.__base_url}/{key}"
             storage_time = time.time() - start_time
             try:
-                response = httpx.post(f"{url}/deactivate?id={quote(stream_id)}", headers=self.__headers, timeout=None)
+                response = self.client.post(f"/{key}/deactivate?id={quote(stream_id)}")
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(
@@ -176,10 +181,9 @@ class Storage(metaclass=SingletonMeta):
         self._dict_to_file(key, data)
 
         if self.__enable_request:
-            url = f"{self.__base_url}/{key}"
             storage_time = time.time() - storage_start_time
             try:
-                response = httpx.post(f"{url}/line/{stream_id}", headers=self.__headers, json=line, timeout=None)
+                response = self.client.post(f"/{key}/line/{stream_id}", json=line)
                 storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
                     self.sync_server(key, data)
@@ -229,10 +233,9 @@ class Storage(metaclass=SingletonMeta):
         """
         start_time = time.time()
         if self.__enable_request:
-            url = f"{self.__base_url}/{key}"
             storage_time = time.time() - start_time
             try:
-                response = httpx.post(f"{url}/sync", headers=self.__headers, json=data, timeout=None)
+                response = self.client.post(f"/{key}/sync", json=data)
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(
@@ -325,12 +328,11 @@ class Storage(metaclass=SingletonMeta):
             start_time = time.time()
             if os.path.exists(item.path):
                 if self.__enable_request:
-                    url = f"{self.__base_url}/{item.key}"
                     try:
                         with open(item.path, "rb") as f:
                             files = {"file": f}
-                            response = httpx.post(
-                                f"{url}/media/{item.stream_id}/{item.id}", headers=self.__headers, files=files, timeout=None
+                            response = self.client.post(
+                                f"/{item.key}/media/{item.stream_id}/{item.id}", files=files
                             )
                         storage_time = time.time() - start_time
                         if response.status_code != 200:

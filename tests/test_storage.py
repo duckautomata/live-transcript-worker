@@ -42,7 +42,8 @@ def test_activate_new_stream(storage, mocker):
     mock_clear_queue = mocker.patch.object(storage, "_clear_queue_folder")
 
     # mock http request
-    mocker.patch("httpx.post", return_value=MagicMock(status_code=200))
+    storage.client = MagicMock()
+    storage.client.post.return_value = MagicMock(status_code=200)
 
     info = MagicMock()
     info.key = "test_key"
@@ -71,6 +72,7 @@ def test_activate_new_stream(storage, mocker):
     )
     mock_clear_queue.assert_called_with("test_key")
     storage._Storage__upload_queue.get_nowait.assert_called()
+    storage.client.post.assert_called()
 
 
 def test_activate_same_stream(storage, mocker):
@@ -79,7 +81,9 @@ def test_activate_same_stream(storage, mocker):
     mocker.patch.object(storage, "_file_to_dict", return_value={"isLive": False})
 
     # mock http request
-    mocker.patch("httpx.post", return_value=MagicMock(status_code=200))
+    # mock http request
+    storage.client = MagicMock()
+    storage.client.post.return_value = MagicMock(status_code=200)
 
     info = MagicMock()
     info.key = "test_key"
@@ -99,7 +103,8 @@ def test_deactivate(storage, mocker):
     mock_dict_to_file = mocker.patch.object(storage, "_dict_to_file")
     mocker.patch.object(storage, "_file_to_dict", return_value={"isLive": True})
 
-    mocker.patch("httpx.post", return_value=MagicMock(status_code=200))
+    storage.client = MagicMock()
+    storage.client.post.return_value = MagicMock(status_code=200)
 
     storage.deactivate("key", "id")
 
@@ -111,7 +116,8 @@ def test_deactivate(storage, mocker):
 def test_add_new_line(storage, mocker, tmp_path):
     mocker.patch.object(storage, "_file_to_dict", return_value={"activeId": "a12", "transcript": [{"id": 0}], "startTime": 0})
     mock_dict_to_file = mocker.patch.object(storage, "_dict_to_file")
-    mocker.patch("httpx.post", return_value=MagicMock(status_code=200))
+    storage.client = MagicMock()
+    storage.client.post.return_value = MagicMock(status_code=200)
 
     # Mock queue folder
     queue_folder = tmp_path / "queue"
@@ -144,7 +150,8 @@ def test_add_new_line(storage, mocker, tmp_path):
 def test_add_new_line_sync_error(storage, mocker, tmp_path):
     mocker.patch.object(storage, "_file_to_dict", return_value={"activeId": "345", "transcript": [], "startTime": 0})
     mocker.patch.object(storage, "_dict_to_file")
-    mocker.patch("httpx.post", return_value=MagicMock(status_code=409))
+    storage.client = MagicMock()
+    storage.client.post.return_value = MagicMock(status_code=409)
     mock_sync = mocker.patch.object(storage, "sync_server")
 
     # Mock queue stuff to avoid errors
@@ -166,7 +173,9 @@ def test_media_upload_worker(storage, mocker, tmp_path):
     storage._Storage__upload_queue = MagicMock()
     storage._Storage__upload_queue.get.side_effect = [MediaUploadObject("key", "123", 2, str(file_path)), Exception("Stop Loop")]
 
-    mock_post = mocker.patch("httpx.post", return_value=MagicMock(status_code=200))
+    storage.client = MagicMock()
+    storage.client.post.return_value = MagicMock(status_code=200)
+    mock_post = storage.client.post
 
     try:
         storage._media_upload_worker()
@@ -247,11 +256,14 @@ def test_process_old_queue_files_bfs_uneven(mocker, tmp_path, mock_config):
     assert item.key == "test1" and item.id == 12
 
 
-def test_process_old_queue_files_empty(mocker, mock_config):
+def test_process_old_queue_files_empty(mocker, mock_config, tmp_path):
     # Reset singleton
     Storage._instances = {}
     mocker.patch("src.live_transcript_worker.storage.Config", mock_config)
     mocker.patch("threading.Thread")
+
+    # Mock _get_queue_folder to use tmp_path so we don't pick up real files
+    mocker.patch("src.live_transcript_worker.storage.Storage._get_queue_folder", side_effect=lambda key: str(tmp_path / key / "queue"))
 
     # Case 1: No streamers
     mock_config.get_all_streamers_config.return_value = []

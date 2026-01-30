@@ -9,6 +9,7 @@ Using version [1.10](#110-2025-12-26)
 
 ## 2.2 (2026-01-29)
 - Updated yt-dlp deps.
+- Added persistent http client to storage to reuse connections.
 
 ## 2.1 (2026-01-20)
 **Important**
