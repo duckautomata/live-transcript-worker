@@ -26,11 +26,12 @@ RUN echo "Cache bust: ${CACHEBUST}" && export DENO_INSTALL=/usr/local && \
 
 # Setting up app
 WORKDIR /app
-RUN mkdir -p /app/tmp /app/models /app/bin && chown -R 1000:1000 /app
-USER 1000
+RUN mkdir -p /app/tmp /app/models /app/bin
+
 RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
-COPY --chown=1000:1000 requirements.txt .
+COPY requirements.txt .
+
 RUN echo "Cache bust: ${CACHEBUST}" && pip install --no-cache-dir -r requirements.txt
 
 # Install yt-dlp binary
@@ -40,8 +41,8 @@ RUN echo "Cache bust: ${CACHEBUST}" && \
     /app/bin/yt-dlp -U
 
 # Copy application files
-COPY --chown=1000:1000 main.py main.py
-COPY --chown=1000:1000 src src
+COPY main.py main.py
+COPY src src
 
 VOLUME ["/app/tmp", "/app/models"]
 

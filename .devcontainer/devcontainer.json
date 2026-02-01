@@ -7,8 +7,6 @@
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "username": "ubuntu",
-      "userUid": "1000",
-      "userGid": "1000",
       "upgradePackages": true
     }
   },
@@ -32,6 +30,6 @@
       }
     }
   },
-  "remoteUser": "ubuntu",
+  "remoteUser": "root",
   "updateContentCommand": "sudo apt-get update"
 }
