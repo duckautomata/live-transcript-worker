@@ -53,7 +53,5 @@ class StatusReporter(threading.Thread):
             response = self.client.post("/status", json=payload)
             if response.status_code != 200:
                 logger.warning(f"[StatusReporter] Server returned {response.status_code}: {response.text}")
-            else:
-                logger.debug(f"[StatusReporter] Successfully sent status: {payload}")
         except httpx.RequestError as e:
             logger.error(f"[StatusReporter] Network error sending status: {e}")
