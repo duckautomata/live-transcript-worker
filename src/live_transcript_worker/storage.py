@@ -41,11 +41,7 @@ class Storage(metaclass=SingletonMeta):
 
         # Initialize persistent client with timeouts disabled
         # and default headers/base_url
-        self.client = httpx.Client(
-            base_url=self.__base_url,
-            headers=self.__headers,
-            timeout=None
-        )
+        self.client = httpx.Client(base_url=self.__base_url, headers=self.__headers, timeout=None)
 
         self.__upload_queue: queue.Queue[MediaUploadObject] = queue.Queue()
         self._process_old_queue_files()
@@ -331,9 +327,7 @@ class Storage(metaclass=SingletonMeta):
                     try:
                         with open(item.path, "rb") as f:
                             files = {"file": f}
-                            response = self.client.post(
-                                f"/{item.key}/media/{item.stream_id}/{item.id}", files=files
-                            )
+                            response = self.client.post(f"/{item.key}/media/{item.stream_id}/{item.id}", files=files)
                         storage_time = time.time() - start_time
                         if response.status_code != 200:
                             logger.warning(

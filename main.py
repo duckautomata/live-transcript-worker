@@ -6,6 +6,7 @@ import threading
 from datetime import datetime
 
 from src.live_transcript_worker.config import Config
+from src.live_transcript_worker.status_reporter import StatusReporter
 from src.live_transcript_worker.stream_watcher import StreamWatcher
 
 # Logger will be used for all modules under src/live_transcript_worker
@@ -83,6 +84,9 @@ def main():
             stream_watcher.add(key, urls)
 
     stream_watcher.start()
+
+    status_reporter = StatusReporter(shutdown_event)
+    status_reporter.start()
 
     try:
         app_logger.info("Application started. Waiting for shutdown signal.")
