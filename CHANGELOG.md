@@ -9,6 +9,7 @@ Using version [1.10](#110-2025-12-26)
 
 ## 2.3 (2026-02-05)
 - Added status reporter
+- Renamed activeId to streamId and activeTitle to streamTitle
 
 ## 2.2 (2026-01-29)
 - Updated yt-dlp deps.

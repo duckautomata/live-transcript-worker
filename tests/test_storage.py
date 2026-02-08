@@ -62,8 +62,8 @@ def test_activate_new_stream(storage, mocker):
     mock_dict_to_file.assert_called_with(
         "test_key",
         {
-            "activeId": "new_id",
-            "activeTitle": "Title",
+            "streamId": "new_id",
+            "streamTitle": "Title",
             "startTime": "100",
             "mediaType": Media.AUDIO,
             "isLive": True,
@@ -114,7 +114,7 @@ def test_deactivate(storage, mocker):
 
 
 def test_add_new_line(storage, mocker, tmp_path):
-    mocker.patch.object(storage, "_file_to_dict", return_value={"activeId": "a12", "transcript": [{"id": 0}], "startTime": 0})
+    mocker.patch.object(storage, "_file_to_dict", return_value={"streamId": "a12", "transcript": [{"id": 0}], "startTime": 0})
     mock_dict_to_file = mocker.patch.object(storage, "_dict_to_file")
     storage.client = MagicMock()
     storage.client.post.return_value = MagicMock(status_code=200)
@@ -148,7 +148,7 @@ def test_add_new_line(storage, mocker, tmp_path):
 
 
 def test_add_new_line_sync_error(storage, mocker, tmp_path):
-    mocker.patch.object(storage, "_file_to_dict", return_value={"activeId": "345", "transcript": [], "startTime": 0})
+    mocker.patch.object(storage, "_file_to_dict", return_value={"streamId": "345", "transcript": [], "startTime": 0})
     mocker.patch.object(storage, "_dict_to_file")
     storage.client = MagicMock()
     storage.client.post.return_value = MagicMock(status_code=409)

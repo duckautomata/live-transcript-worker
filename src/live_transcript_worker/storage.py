@@ -75,8 +75,8 @@ class Storage(metaclass=SingletonMeta):
             self._dict_to_file(
                 info.key,
                 {
-                    "activeId": info.stream_id,
-                    "activeTitle": info.stream_title,
+                    "streamId": info.stream_id,
+                    "streamTitle": info.stream_title,
                     "startTime": info.start_time,
                     "mediaType": info.media_type,
                     "isLive": True,
@@ -101,7 +101,7 @@ class Storage(metaclass=SingletonMeta):
             logger.info(f"[{info.key}][activate] Same stream id. Updating isLive")
             data = self._file_to_dict(info.key)
             data["isLive"] = True
-            data["activeTitle"] = info.stream_title
+            data["streamTitle"] = info.stream_title
             data["startTime"] = info.start_time
             self._dict_to_file(info.key, data)
 
@@ -166,7 +166,7 @@ class Storage(metaclass=SingletonMeta):
         storage_start_time = time.time()
         data = self._file_to_dict(key)
         transcript: list = data["transcript"]
-        stream_id: str = data["activeId"]
+        stream_id: str = data["streamId"]
         last_id = -1
         if len(transcript) > 0:
             last_id = transcript[-1]["id"]
@@ -259,10 +259,10 @@ class Storage(metaclass=SingletonMeta):
 
     def _get_active_id(self, key: str) -> str:
         initial_state = self._file_to_dict(key)
-        return initial_state["activeId"]
+        return initial_state["streamId"]
 
     def _file_to_dict(self, key: str) -> dict:
-        data = {"activeId": ""}
+        data = {"streamId": ""}
         try:
             with open(self._get_marshal_file(key), "rb") as file:
                 data = marshal.load(file)
