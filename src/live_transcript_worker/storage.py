@@ -8,8 +8,7 @@ import threading
 import time
 from datetime import datetime
 from urllib.parse import quote
-
-import httpx
+import requests
 
 from src.live_transcript_worker.config import Config
 from src.live_transcript_worker.custom_types import MediaUploadObject, StreamInfoObject
@@ -39,9 +38,10 @@ class Storage(metaclass=SingletonMeta):
         self.__headers = {"X-API-Key": api_key.strip()}
         self.__base_url = server_config.get("url", "http://localhost:8080")
 
-        # Initialize persistent client with timeouts disabled
-        # and default headers/base_url
-        self.client = httpx.Client(base_url=self.__base_url, headers=self.__headers, timeout=None)
+        # Initialize persistent requests Session
+        self.session = requests.Session()
+        self.session.headers.update(self.__headers)
+        self.__base_url_session = self.__base_url
 
         self.__upload_queue: queue.Queue[MediaUploadObject] = queue.Queue()
         self._process_old_queue_files()
@@ -111,9 +111,9 @@ class Storage(metaclass=SingletonMeta):
             )
             storage_time = time.time() - start_time
             try:
-                # Using persistent client
-                response = self.client.post(
-                    f"/{info.key}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}"
+                # Using persistent session
+                response = self.session.post(
+                    f"{self.__base_url_session}/{info.key}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}"
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -122,7 +122,7 @@ class Storage(metaclass=SingletonMeta):
                     )
                 else:
                     logger.info(f"[{info.key}][activate][{(storage_time):.3f}] Stream {info.stream_id} successfully activated")
-            except httpx.RequestError as e:
+            except requests.RequestException as e:
                 logger.error(f"[{info.key}][activate][{(storage_time):.3f}] Unable to send activation request to relay: {e}")
 
     def deactivate(self, key: str, stream_id: str):
@@ -140,7 +140,7 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request and stream_id != "":
             storage_time = time.time() - start_time
             try:
-                response = self.client.post(f"/{key}/deactivate?id={quote(stream_id)}")
+                response = self.session.post(f"{self.__base_url_session}/{key}/deactivate?id={quote(stream_id)}")
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(
@@ -148,7 +148,7 @@ class Storage(metaclass=SingletonMeta):
                     )
                 else:
                     logger.info(f"[{key}][deactivate][{(storage_time):.3f}] Stream {stream_id} successfully deactivated")
-            except httpx.RequestError as e:
+            except requests.RequestException as e:
                 logger.error(f"[{key}][deactivate][{(storage_time):.3f}] Unable to send deactivation request to relay: {e}")
         else:
             # local only, so we should log
@@ -179,7 +179,7 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request:
             storage_time = time.time() - storage_start_time
             try:
-                response = self.client.post(f"/{key}/line/{stream_id}", json=line)
+                response = self.session.post(f"{self.__base_url_session}/{key}/line/{stream_id}", json=line)
                 storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
                     self.sync_server(key, data)
@@ -193,7 +193,7 @@ class Storage(metaclass=SingletonMeta):
                     logger.debug(f"[{key}][add_new_line][{(storage_time):.3f}] successfully sent {line}")
                     # We need to enqueue after the line is sent so that the server bc the server needs the line to exist before it can add the media
                     self._enqueue_media(key, stream_id, line["id"], raw_bytes)
-            except httpx.RequestError as e:
+            except requests.RequestException as e:
                 logger.error(f"Unable to send line request to relay: {e}")
         else:
             # request disabled, so we append new line to local file
@@ -231,7 +231,7 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request:
             storage_time = time.time() - start_time
             try:
-                response = self.client.post(f"/{key}/sync", json=data)
+                response = self.session.post(f"{self.__base_url_session}/{key}/sync", json=data)
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(
@@ -239,7 +239,7 @@ class Storage(metaclass=SingletonMeta):
                     )
                 else:
                     logger.info(f"[{key}][sync_server][{(storage_time):.3f}] Uploaded entire state to server")
-            except httpx.RequestError as e:
+            except requests.RequestException as e:
                 logger.error(f"[{key}][sync_server][{(storage_time):.3f}] Unable to send sync request to relay: {e}")
 
     def _get_marshal_file(self, key: str):
@@ -327,7 +327,7 @@ class Storage(metaclass=SingletonMeta):
                     try:
                         with open(item.path, "rb") as f:
                             files = {"file": f}
-                            response = self.client.post(f"/{item.key}/media/{item.stream_id}/{item.id}", files=files)
+                            response = self.session.post(f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}", files=files)
                         storage_time = time.time() - start_time
                         if response.status_code != 200:
                             logger.warning(
