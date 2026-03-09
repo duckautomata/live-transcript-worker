@@ -1,11 +1,15 @@
 # latest
-Using version [2.3](#23-2026-02-05)
+Using version [2.4](#24-2026-03-09)
 
 # Major version 2
-Using version [2.3](#23-2026-02-05)
+Using version [2.4](#24-2026-03-09)
 
 # Major version 1
 Using version [1.10](#110-2025-12-26)
+
+## 2.4 (2026-03-09)
+**Important**
+- Fixed slow uploads by switching to requests instead of httpx.
 
 ## 2.3 (2026-02-05)
 - Added status reporter
