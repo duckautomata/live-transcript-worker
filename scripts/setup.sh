@@ -8,12 +8,9 @@
 set -e
 
 # --- Path and Environment Setup ---
-# This ensures the script always runs from the project's root directory.
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
-cd "$PROJECT_ROOT" || exit 1
-
-echo "Running setup from project root: $PWD"
+# Change to the project root directory
+cd "$(dirname "$0")/.."
+echo "Running from project root: $PWD"
 
 # --- Prerequisite Verification ---
 echo -e "\nVerifying required tools..."

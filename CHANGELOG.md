@@ -10,6 +10,7 @@ Using version [1.10](#110-2025-12-26)
 ## 2.4 (2026-03-09)
 **Important**
 - Fixed slow uploads by switching to requests instead of httpx.
+- Updated deps
 
 ## 2.3 (2026-02-05)
 - Added status reporter

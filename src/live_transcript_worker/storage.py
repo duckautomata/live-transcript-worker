@@ -8,6 +8,7 @@ import threading
 import time
 from datetime import datetime
 from urllib.parse import quote
+
 import requests
 
 from src.live_transcript_worker.config import Config
@@ -327,7 +328,9 @@ class Storage(metaclass=SingletonMeta):
                     try:
                         with open(item.path, "rb") as f:
                             files = {"file": f}
-                            response = self.session.post(f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}", files=files)
+                            response = self.session.post(
+                                f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}", files=files
+                            )
                         storage_time = time.time() - start_time
                         if response.status_code != 200:
                             logger.warning(
