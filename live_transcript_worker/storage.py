@@ -326,11 +326,15 @@ class Storage(metaclass=SingletonMeta):
             if os.path.exists(item.path):
                 if self.__enable_request:
                     try:
+                        logger.debug(f"[{item.key}][upload_media][{item.stream_id}][{item.id}] uploading media")
                         with open(item.path, "rb") as f:
                             files = {"file": f}
                             response = self.session.post(
                                 f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}",
                                 files=files,
+                            )
+                            logger.debug(
+                                f"[{item.key}][upload_media][{item.stream_id}][{item.id}] media uploaded with response Response: {response.status_code} {response.text}"
                             )
                         storage_time = time.time() - start_time
                         if response.status_code != 200:

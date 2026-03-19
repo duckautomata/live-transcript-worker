@@ -24,9 +24,9 @@
         "charliermarsh.ruff"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.defaultInterpreterPath": "/workspaces/live-transcript-worker/.venv/bin/python",
         "python.analysis.extraPaths": [
-          "${workspaceFolder}"
+          "/workspaces/live-transcript-worker"
         ],
         "editor.formatOnSave": true,
         "[python]": {

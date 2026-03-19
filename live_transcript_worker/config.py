@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any
 
-import yaml  # Requires PyYAML library (pip install PyYAML)
+import yaml
 
 logger = logging.getLogger(__name__)
 
