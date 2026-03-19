@@ -10,6 +10,8 @@ from datetime import datetime
 from urllib.parse import quote
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from live_transcript_worker.config import Config
 from live_transcript_worker.custom_types import MediaUploadObject, StreamInfoObject
@@ -42,6 +44,20 @@ class Storage(metaclass=SingletonMeta):
         # Initialize persistent requests Session
         self.session = requests.Session()
         self.session.headers.update(self.__headers)
+
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=2, #2, 4, 8
+            status_forcelist=[500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=4,
+            pool_maxsize=10,
+        )
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
         self.__base_url_session = self.__base_url
 
         self.__upload_queue: queue.Queue[MediaUploadObject] = queue.Queue()
@@ -114,7 +130,8 @@ class Storage(metaclass=SingletonMeta):
             try:
                 # Using persistent session
                 response = self.session.post(
-                    f"{self.__base_url_session}/{info.key}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}"
+                    f"{self.__base_url_session}/{info.key}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
+                    timeout=(5, 5)  # (connect timeout, read timeout)
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -141,7 +158,10 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request and stream_id != "":
             storage_time = time.time() - start_time
             try:
-                response = self.session.post(f"{self.__base_url_session}/{key}/deactivate?id={quote(stream_id)}")
+                response = self.session.post(
+                    f"{self.__base_url_session}/{key}/deactivate?id={quote(stream_id)}",
+                    timeout=(5, 5)  # (connect timeout, read timeout)
+                )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(
@@ -180,7 +200,10 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request:
             storage_time = time.time() - storage_start_time
             try:
-                response = self.session.post(f"{self.__base_url_session}/{key}/line/{stream_id}", json=line)
+                response = self.session.post(
+                    f"{self.__base_url_session}/{key}/line/{stream_id}", json=line,
+                    timeout=(5, 10)  # (connect timeout, read timeout)
+                )
                 storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
                     self.sync_server(key, data)
@@ -232,7 +255,10 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request:
             storage_time = time.time() - start_time
             try:
-                response = self.session.post(f"{self.__base_url_session}/{key}/sync", json=data)
+                response = self.session.post(
+                    f"{self.__base_url_session}/{key}/sync", json=data,
+                    timeout=(5, 30)  # (connect timeout, read timeout)
+                )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
                     logger.warning(
@@ -332,6 +358,7 @@ class Storage(metaclass=SingletonMeta):
                             response = self.session.post(
                                 f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}",
                                 files=files,
+                                timeout=(5, 30)  # (connect timeout, read timeout)
                             )
                             logger.debug(
                                 f"[{item.key}][upload_media][{item.stream_id}][{item.id}] media uploaded with response Response: {response.status_code} {response.text}"

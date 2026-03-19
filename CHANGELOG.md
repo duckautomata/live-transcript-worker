@@ -10,6 +10,7 @@ Using version [1.10](#110-2025-12-26)
 ## 2.5 (2026-03-19)
 **Important**
 - Converted from pip to uv
+- Added http adapter and retry logic to help manage stale connections
 
 ## 2.4 (2026-03-09)
 **Important**
