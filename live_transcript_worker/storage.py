@@ -47,7 +47,7 @@ class Storage(metaclass=SingletonMeta):
 
         retry_strategy = Retry(
             total=3,
-            backoff_factor=2, #2, 4, 8
+            backoff_factor=2,  # 2, 4, 8
             status_forcelist=[500, 502, 503, 504],
         )
         adapter = HTTPAdapter(
@@ -131,7 +131,7 @@ class Storage(metaclass=SingletonMeta):
                 # Using persistent session
                 response = self.session.post(
                     f"{self.__base_url_session}/{info.key}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
-                    timeout=(5, 5)  # (connect timeout, read timeout)
+                    timeout=(5, 5),  # (connect timeout, read timeout)
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -160,7 +160,7 @@ class Storage(metaclass=SingletonMeta):
             try:
                 response = self.session.post(
                     f"{self.__base_url_session}/{key}/deactivate?id={quote(stream_id)}",
-                    timeout=(5, 5)  # (connect timeout, read timeout)
+                    timeout=(5, 5),  # (connect timeout, read timeout)
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -201,8 +201,9 @@ class Storage(metaclass=SingletonMeta):
             storage_time = time.time() - storage_start_time
             try:
                 response = self.session.post(
-                    f"{self.__base_url_session}/{key}/line/{stream_id}", json=line,
-                    timeout=(5, 10)  # (connect timeout, read timeout)
+                    f"{self.__base_url_session}/{key}/line/{stream_id}",
+                    json=line,
+                    timeout=(5, 10),  # (connect timeout, read timeout)
                 )
                 storage_time = time.time() - storage_start_time
                 if response.status_code == 409:
@@ -256,8 +257,9 @@ class Storage(metaclass=SingletonMeta):
             storage_time = time.time() - start_time
             try:
                 response = self.session.post(
-                    f"{self.__base_url_session}/{key}/sync", json=data,
-                    timeout=(5, 30)  # (connect timeout, read timeout)
+                    f"{self.__base_url_session}/{key}/sync",
+                    json=data,
+                    timeout=(5, 30),  # (connect timeout, read timeout)
                 )
                 storage_time = time.time() - start_time
                 if response.status_code != 200:
@@ -358,7 +360,7 @@ class Storage(metaclass=SingletonMeta):
                             response = self.session.post(
                                 f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}",
                                 files=files,
-                                timeout=(5, 30)  # (connect timeout, read timeout)
+                                timeout=(5, 30),  # (connect timeout, read timeout)
                             )
                             logger.debug(
                                 f"[{item.key}][upload_media][{item.stream_id}][{item.id}] media uploaded with response Response: {response.status_code} {response.text}"
