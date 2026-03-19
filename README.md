@@ -166,12 +166,17 @@ You can view all tags on [Dockerhub](https://hub.docker.com/r/duckautomata/live-
 2. create `config.yaml` from the example config file. Place it in the root dir where docker-compose.yml exists.
 3. create the data directory
 ```bash
-mkdir -p ./{tmp,model}
-chmod -R 777 ./tmp ./model
+mkdir -p ./{tmp,models}
+chmod -R 777 ./tmp ./models
 ```
 4. Then start the container:
 ```bash
 docker compose up -d
+```
+
+To update the container
+```bash
+docker compose pull && docker compose up -d && docker image prune -f
 ```
 
 The models are not installed in the image. So, on the first start, it will download the model specified in the config file. However, any subsequent starts will reuse the model since the model folder `model/` is stored outside the container.
