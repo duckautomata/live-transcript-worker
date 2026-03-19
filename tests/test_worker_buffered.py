@@ -3,13 +3,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.live_transcript_worker.custom_types import Media, StreamInfoObject
-from src.live_transcript_worker.worker_buffered import MPEGBufferedWorker
+from live_transcript_worker.custom_types import Media, StreamInfoObject
+from live_transcript_worker.worker_buffered import MPEGBufferedWorker
 
 
 @pytest.fixture
 def buffered_worker(mocker):
-    mocker.patch("src.live_transcript_worker.worker_abstract.Config")
+    mocker.patch("live_transcript_worker.worker_abstract.Config")
     queue = MagicMock()
     stop_event = MagicMock()
 
@@ -30,13 +30,16 @@ def test_start(buffered_worker, mocker):
     # Patch Lock to inject data when entered
     mock_lock = MagicMock()
     mock_lock.__enter__.side_effect = lambda: buffered_worker.buffer.extend(b"\x00" * 200000)
-    mocker.patch("src.live_transcript_worker.worker_buffered.Lock", return_value=mock_lock)
+    mocker.patch("live_transcript_worker.worker_buffered.Lock", return_value=mock_lock)
 
     buffered_worker.stop_event.is_set.side_effect = [False, True]  # Run once then stop
     buffered_worker.ytdlp_stopped = MagicMock()
     buffered_worker.ytdlp_stopped.is_set.return_value = False
 
-    mocker.patch("src.live_transcript_worker.worker_buffered.StreamHelper.get_duration", return_value=10.0)
+    mocker.patch(
+        "live_transcript_worker.worker_buffered.StreamHelper.get_duration",
+        return_value=10.0,
+    )
 
     info = StreamInfoObject(url="url", key="key", media_type=Media.AUDIO)
 

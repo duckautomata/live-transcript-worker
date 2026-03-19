@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# A script to run the python program using the virtual environment .venv - mainly used for development.
+# A script to run the python program using uv - mainly used for development.
 #
 # Usage: ./scripts/run.sh [config_name]
 # Example: ./scripts/run.sh dev.yaml
@@ -15,8 +15,6 @@ set -e
 
 # --- Configuration ---
 YT_DLP_PATH="./bin/yt-dlp"
-VENV_PATH=".venv"
-PYTHON_EXE="$VENV_PATH/bin/python"
 PYTHON_SCRIPT="main.py"
 CONFIG_DIR="config"
 DEFAULT_CONFIG_FILE="config"
@@ -37,7 +35,6 @@ fi
 
 CONFIG_FILE_PATH="$CONFIG_DIR/$CONFIG_FILE_NAME.yaml"
 
-# Check if the determined config file exists
 if [ ! -f "$CONFIG_FILE_PATH" ]; then
     echo "Error: Configuration file not found at '$CONFIG_FILE_PATH'"
     exit 1
@@ -48,7 +45,6 @@ echo "   Using configuration: $CONFIG_FILE_PATH"
 # --- Update yt-dlp ---
 echo -e "\nAttempting to update yt-dlp..."
 if [ -f "$YT_DLP_PATH" ]; then
-    # Ensure the binary is executable
     chmod +x "$YT_DLP_PATH"
     "$YT_DLP_PATH" -U
     echo "   yt-dlp update attempt finished."
@@ -57,26 +53,6 @@ else
     exit 1
 fi
 
-# --- Activate Virtual Environment ---
-echo -e "\nActivating virtual environment..."
-if [ -f "$PYTHON_EXE" ]; then
-    source "$VENV_PATH/bin/activate"
-    echo "   Virtual environment activated."
-else
-    echo "Error: Python virtual environment not found or is invalid."
-    echo "   Expected Python executable at: '$PYTHON_EXE'"
-    exit 1
-fi
+uv run main.py "$CONFIG_FILE_NAME.yaml"
 
-# --- Run Python Script ---
-if [ -f "$PYTHON_SCRIPT" ]; then
-    echo -e "\nRunning $PYTHON_SCRIPT..."
-    python "$PYTHON_SCRIPT" "$CONFIG_FILE_NAME.yaml"
-else
-    echo "Error: Main script '$PYTHON_SCRIPT' not found."
-    exit 1
-fi
-
-# --- Deactivate and Finish ---
-deactivate
 echo -e "\nScript completed successfully."

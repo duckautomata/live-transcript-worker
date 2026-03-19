@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.live_transcript_worker.worker_abstract import AbstractWorker
+from live_transcript_worker.worker_abstract import AbstractWorker
 
 
 # Concrete implementation for testing

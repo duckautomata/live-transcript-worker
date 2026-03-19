@@ -11,8 +11,8 @@ from urllib.parse import quote
 
 import requests
 
-from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.custom_types import MediaUploadObject, StreamInfoObject
+from live_transcript_worker.config import Config
+from live_transcript_worker.custom_types import MediaUploadObject, StreamInfoObject
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +329,8 @@ class Storage(metaclass=SingletonMeta):
                         with open(item.path, "rb") as f:
                             files = {"file": f}
                             response = self.session.post(
-                                f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}", files=files
+                                f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}",
+                                files=files,
                             )
                         storage_time = time.time() - start_time
                         if response.status_code != 200:
@@ -373,7 +374,13 @@ class Storage(metaclass=SingletonMeta):
                         if match:
                             stream_id = match.group(1)
                             line_id = int(match.group(2))
-                            files.append((line_id, stream_id, os.path.join(queue_folder, filename)))
+                            files.append(
+                                (
+                                    line_id,
+                                    stream_id,
+                                    os.path.join(queue_folder, filename),
+                                )
+                            )
                     except ValueError:
                         continue
 

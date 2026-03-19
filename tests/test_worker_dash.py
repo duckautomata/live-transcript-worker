@@ -3,13 +3,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.live_transcript_worker.custom_types import Media, StreamInfoObject
-from src.live_transcript_worker.worker_dash import DASHWorker
+from live_transcript_worker.custom_types import Media, StreamInfoObject
+from live_transcript_worker.worker_dash import DASHWorker
 
 
 @pytest.fixture
 def dash_worker(mocker):
-    mocker.patch("src.live_transcript_worker.worker_abstract.Config")
+    mocker.patch("live_transcript_worker.worker_abstract.Config")
     # Mock AbstractWorker init items
     queue = MagicMock()
     stop_event = MagicMock()

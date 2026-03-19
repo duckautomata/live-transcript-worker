@@ -8,8 +8,8 @@ import time
 
 import av
 
-from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.custom_types import Media, StreamInfoObject
+from live_transcript_worker.config import Config
+from live_transcript_worker.custom_types import Media, StreamInfoObject
 
 logger = logging.getLogger(__name__)
 
@@ -106,26 +106,25 @@ class StreamHelper:
     @staticmethod
     def get_duration(audio: bytes):
         try:
-            with io.BytesIO(audio) as buffer:
-                with av.open(buffer, mode="r") as container:
-                    duration_us = container.duration
-                    start_time_us = container.start_time
+            with io.BytesIO(audio) as buffer, av.open(buffer, mode="r") as container:
+                duration_us = container.duration
+                start_time_us = container.start_time
 
-                    if duration_us is None:
-                        logger.warning(
-                            "[audio_duration] Duration metadata not found in the stream.",
-                        )
-                        return 0.0
+                if duration_us is None:
+                    logger.warning(
+                        "[audio_duration] Duration metadata not found in the stream.",
+                    )
+                    return 0.0
 
-                    # Convert duration from microseconds to seconds
-                    duration_sec = duration_us / 1_000_000.0
-                    start_time_sec = start_time_us / 1_000_000.0
-                    audio_duration = duration_sec - start_time_sec
+                # Convert duration from microseconds to seconds
+                duration_sec = duration_us / 1_000_000.0
+                start_time_sec = start_time_us / 1_000_000.0
+                audio_duration = duration_sec - start_time_sec
 
-                    if audio_duration < 0:
-                        return duration_sec
+                if audio_duration < 0:
+                    return duration_sec
 
-                    return audio_duration
+                return audio_duration
         except Exception:
             logger.error("[audio_duration] Invalid media data for buffer")
             return 0.0

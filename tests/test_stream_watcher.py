@@ -2,14 +2,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.live_transcript_worker.custom_types import Media, StreamInfoObject
-from src.live_transcript_worker.stream_watcher import StreamWatcher
+from live_transcript_worker.custom_types import Media, StreamInfoObject
+from live_transcript_worker.stream_watcher import StreamWatcher
 
 
 @pytest.fixture
 def stream_watcher(mocker, mock_config, mock_storage):
-    mocker.patch("src.live_transcript_worker.stream_watcher.Config", mock_config)
-    mocker.patch("src.live_transcript_worker.stream_watcher.Storage", return_value=mock_storage)
+    mocker.patch("live_transcript_worker.stream_watcher.Config", mock_config)
+    mocker.patch("live_transcript_worker.stream_watcher.Storage", return_value=mock_storage)
     sw = StreamWatcher()
     sw.stop_event = MagicMock()
     return sw
@@ -42,12 +42,15 @@ def test_watcher_loop(stream_watcher, mocker):
     # Mock checks
     mocker.patch("time.sleep")
     mocker.patch(
-        "src.live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
         return_value=StreamInfoObject(is_live=True, stream_id="id", start_time="100"),
     )
-    mocker.patch("src.live_transcript_worker.helper.StreamHelper.get_media_type", return_value=Media.AUDIO)
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
 
-    mock_worker_cls = mocker.patch("src.live_transcript_worker.stream_watcher.Worker")
+    mock_worker_cls = mocker.patch("live_transcript_worker.stream_watcher.Worker")
     mock_worker = mock_worker_cls.return_value
 
     stream_watcher.stop_event.is_set.side_effect = [False, True]
@@ -60,7 +63,7 @@ def test_watcher_loop(stream_watcher, mocker):
 
 
 def test_processor(stream_watcher, mocker):
-    mocker.patch("src.live_transcript_worker.stream_watcher.ProcessAudio")
+    mocker.patch("live_transcript_worker.stream_watcher.ProcessAudio")
 
     item = MagicMock()
     stream_watcher.processing_queue.put(item)

@@ -1,3 +1,4 @@
+import contextlib
 import glob
 import json
 import logging
@@ -9,8 +10,12 @@ import time
 
 import av
 
-from src.live_transcript_worker.custom_types import Media, ProcessObject, StreamInfoObject
-from src.live_transcript_worker.worker_abstract import AbstractWorker
+from live_transcript_worker.custom_types import (
+    Media,
+    ProcessObject,
+    StreamInfoObject,
+)
+from live_transcript_worker.worker_abstract import AbstractWorker
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +92,14 @@ class DASHWorker(AbstractWorker):
                 return
 
         # Start monitoring loop
-        self._monitor_loop(info, fragment_dir, state_file, process, last_processed_seq, current_stream_time)
+        self._monitor_loop(
+            info,
+            fragment_dir,
+            state_file,
+            process,
+            last_processed_seq,
+            current_stream_time,
+        )
 
         # Cleanup process when done
         if process.poll() is None:
@@ -277,10 +289,8 @@ class DASHWorker(AbstractWorker):
         os.makedirs(fragment_dir, exist_ok=True)
 
         if os.path.exists(verification_backup_path):
-            try:
+            with contextlib.suppress(Exception):
                 os.remove(verification_backup_path)
-            except Exception:
-                pass
 
         self._save_state(state_file, info.stream_id, last_processed_seq, current_stream_time)
 
@@ -362,7 +372,7 @@ class DASHWorker(AbstractWorker):
         """Loads the last processed sequence and current stream time from the state file."""
         if os.path.exists(state_path):
             try:
-                with open(state_path, "r") as f:
+                with open(state_path) as f:
                     data = json.load(f)
                     if data.get("stream_id") == current_stream_id:
                         return data.get("last_sequence", 0), data.get("current_stream_time", default_start_time)
@@ -370,7 +380,13 @@ class DASHWorker(AbstractWorker):
                 logger.warning(f"[DASHWorker] Failed to load state: {e}")
         return 0, default_start_time
 
-    def _save_state(self, state_path: str, stream_id: str, last_sequence: int, current_stream_time: float):
+    def _save_state(
+        self,
+        state_path: str,
+        stream_id: str,
+        last_sequence: int,
+        current_stream_time: float,
+    ):
         """Saves the current state to the state file."""
         try:
             with open(state_path, "w") as f:
@@ -502,10 +518,8 @@ class DASHWorker(AbstractWorker):
                             buffer_duration += duration
 
                         # Cleanup merged file
-                        try:
+                        with contextlib.suppress(OSError):
                             os.remove(merged_ts_path)
-                        except OSError:
-                            pass
 
                         last_seq = seq
 
@@ -525,7 +539,12 @@ class DASHWorker(AbstractWorker):
                             buffer_duration = 0.0
 
                             # Save state after successful queueing
-                            self._save_state(state_file, info.stream_id, last_seq, current_stream_time)
+                            self._save_state(
+                                state_file,
+                                info.stream_id,
+                                last_seq,
+                                current_stream_time,
+                            )
                     else:
                         logger.error(f"[{info.key}][DASHWorker] Failed to process fragments for seq {seq}")
                 else:

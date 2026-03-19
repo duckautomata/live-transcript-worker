@@ -1,11 +1,10 @@
 import logging
 import os
 import threading
-from typing import List
 
 import httpx
 
-from src.live_transcript_worker.config import Config
+from live_transcript_worker.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ class StatusReporter(threading.Thread):
         build_time = os.getenv("BUILD_DATE", "unknown")
 
         streamers = Config.get_all_streamers_config()
-        keys: List[str] = [s.get("key") for s in streamers if s.get("key")]  # type: ignore
+        keys: list[str] = [s.get("key") for s in streamers if s.get("key")]  # type: ignore
 
         payload = {"version": version, "build_time": build_time, "keys": keys}
 

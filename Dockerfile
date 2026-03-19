@@ -7,20 +7,20 @@ ARG BUILD_DATE="unknown"
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Install Python and other system dependencies and creating symlink for python and pip
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
-    python3-pip \
-    python3.12-venv \
     ffmpeg \
     curl \
     unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
 # Install Deno (needed for latest yt-dlp version)
-# We set DENO_INSTALL to /usr/local so the binary lands in /usr/local/bin
-# which is in the default PATH and accessible to all users.
 RUN echo "Cache bust: ${CACHEBUST}" && export DENO_INSTALL=/usr/local && \
     curl -fsSL https://deno.land/install.sh | sh
 
@@ -28,11 +28,10 @@ RUN echo "Cache bust: ${CACHEBUST}" && export DENO_INSTALL=/usr/local && \
 WORKDIR /app
 RUN mkdir -p /app/tmp /app/models /app/bin
 
-RUN python3 -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
-COPY requirements.txt .
-
-RUN echo "Cache bust: ${CACHEBUST}" && pip install --no-cache-dir -r requirements.txt
+# Install dependencies via uv
+COPY pyproject.toml .
+COPY uv.lock .
+RUN echo "Cache bust: ${CACHEBUST}" && uv sync --no-dev
 
 # Install yt-dlp binary
 RUN echo "Cache bust: ${CACHEBUST}" && \
@@ -42,11 +41,11 @@ RUN echo "Cache bust: ${CACHEBUST}" && \
 
 # Copy application files
 COPY main.py main.py
-COPY src src
+COPY live_transcript_worker live_transcript_worker
 
 VOLUME ["/app/tmp", "/app/models"]
 
 ENV APP_VERSION=${APP_VERSION}
 ENV BUILD_DATE=${BUILD_DATE}
 
-CMD ["python3", "main.py"]
+CMD ["uv", "run", "main.py"]

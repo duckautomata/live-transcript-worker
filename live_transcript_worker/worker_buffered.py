@@ -3,9 +3,9 @@ import subprocess
 import time
 from threading import Event, Lock, Thread
 
-from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
-from src.live_transcript_worker.helper import StreamHelper
-from src.live_transcript_worker.worker_abstract import AbstractWorker
+from live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
+from live_transcript_worker.helper import StreamHelper
+from live_transcript_worker.worker_abstract import AbstractWorker
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,62 @@
+[project]
+name = "live-transcript-worker"
+version = "1.10"
+description = "Live Transcript Worker"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["ruff"]
+
+[tool.ruff]
+line-length = 140
+indent-width = 4
+
+# Assume Python 3.12
+target-version = "py312"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = []
+
+# Allow fix for all enabled rules (when `--fix` is provided).
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.pyrefly]
+project-includes = ["src", "main.py"]
+project-excludes = ["**/.[!/.]*", "**/tests"]
+search-path = ["."]
+site-package-path = [".venv/lib/python3.12/site-packages"]
+python-platform = "linux"
+python-version = "3.12"
+python-interpreter-path = ".venv/bin/python"
+ignore-errors-in-generated-code = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+pythonpath = ["src"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"

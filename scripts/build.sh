@@ -14,8 +14,9 @@ IMAGE_NAME="duckautomata/live-transcript-worker"
 cd "$(dirname "$0")/.."
 echo "Running from project root: $PWD"
 
+set -e
+
 # --- Input Validation ---
-# Check if a version argument was provided
 if [ -z "$1" ]; then
     echo "Error: No version specified."
     echo "   Usage: $0 <version>"
@@ -24,20 +25,31 @@ fi
 
 VERSION=$1
 
-# Validate the version format using a regular expression.
 if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+$ ]]; then
     echo "Error: Invalid version format: '${VERSION}'"
     echo "   Please use the format 'major.minor' (e.g., '1.2' or '10.4')."
     exit 1
 fi
 
-BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# --- Code Quality Checks ---
+echo -e "\nRunning code quality checks before build..."
+
+echo "   Running Ruff formatter..."
+uv run ruff format .
+
+echo "   Running Ruff linter..."
+uv run ruff check .
+
+echo "   Running Pyrefly type checker..."
+uv run pyrefly check
+
+echo "   All checks passed."
+echo "-----------------------------------"
 
 # --- Tag Generation ---
-# Extract the major version (e.g., '1' from '1.2')
+BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
 
-# Construct the full tags
 SPECIFIC_TAG="${IMAGE_NAME}:${VERSION}"
 MAJOR_TAG="${IMAGE_NAME}:${MAJOR_VERSION}"
 LATEST_TAG="${IMAGE_NAME}:latest"
@@ -49,7 +61,6 @@ echo "   - Latest:   ${LATEST_TAG}"
 echo "-----------------------------------"
 
 # --- Docker Command ---
-# Check if the user can run docker without sudo
 if command -v docker &> /dev/null && docker info > /dev/null 2>&1; then
     DOCKER_CMD="docker"
 elif command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
@@ -59,7 +70,6 @@ else
     exit 1
 fi
 
-# Build the image and apply all tags in a single, efficient command.
 echo "Building Docker image..."
 if ! $DOCKER_CMD build \
     --build-arg APP_VERSION="${VERSION}" \

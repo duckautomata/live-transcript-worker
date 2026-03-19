@@ -5,12 +5,12 @@ import sys
 import threading
 from datetime import datetime
 
-from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.status_reporter import StatusReporter
-from src.live_transcript_worker.stream_watcher import StreamWatcher
+from live_transcript_worker.config import Config
+from live_transcript_worker.status_reporter import StatusReporter
+from live_transcript_worker.stream_watcher import StreamWatcher
 
-# Logger will be used for all modules under src/live_transcript_worker
-app_logger = logging.getLogger("src.live_transcript_worker")
+# Logger will be used for all modules under live_transcript_worker
+app_logger = logging.getLogger("live_transcript_worker")
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 project_root_dir = os.path.dirname(os.path.abspath(__name__))
 log_path = os.path.join(project_root_dir, "tmp", f"{timestamp}.log")
@@ -41,10 +41,7 @@ def setup_logging():
 
 
 def handle_args():
-    if len(sys.argv) > 1:
-        argument = sys.argv[1]
-    else:
-        argument = "config.yaml"
+    argument = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
 
     if argument.lower() == "-h" or argument.lower() == "--help":
         print("Usage: python main.py [config filename under config/ (default: config.yaml)]")

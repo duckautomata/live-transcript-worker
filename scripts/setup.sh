@@ -14,36 +14,12 @@ echo "Running from project root: $PWD"
 
 # --- Prerequisite Verification ---
 echo -e "\nVerifying required tools..."
-
-# Find a suitable Python command
-if command -v python3.12 &>/dev/null; then
-    PYTHON_CMD="python3.12"
-elif command -v python3 &>/dev/null; then
-    PYTHON_CMD="python3"
-elif command -v python &>/dev/null; then
-    PYTHON_CMD="python"
-else
-    echo "Error: Python is not installed. Please install Python 3."
-    exit 1
-fi
-echo "Python found ($PYTHON_CMD)"
-
-# Check if the venv module is installed for the found Python interpreter
-if ! "$PYTHON_CMD" -m venv --help &>/dev/null; then
-    echo "Error: The Python 'venv' module is missing or broken."
-    echo "   On Debian/Ubuntu, try: sudo apt install python3-venv"
-    echo "   On Fedora/CentOS, try: sudo dnf install python3-virtualenv"
-    exit 1
-fi
-echo "Python venv module found"
-
-# Check for other necessary tools
-for tool in ffmpeg curl deno; do
+for tool in ffmpeg curl deno uv; do
     if ! command -v "$tool" &>/dev/null; then
         echo "Error: '$tool' is not installed. Please install it to continue."
         exit 1
     fi
-    echo "✔️ $tool found"
+    echo "$tool found"
 done
 
 # --- Tool Download ---
@@ -54,26 +30,8 @@ chmod a+rx bin/yt-dlp
 echo "yt-dlp has been successfully downloaded to bin/yt-dlp."
 
 # --- Python Environment Setup ---
-VENV_PATH=".venv"
-
-echo -e "\nSetting up Python virtual environment..."
-if [ ! -d "$VENV_PATH" ]; then
-    echo "   -> Creating virtual environment at '$VENV_PATH'..."
-    "$PYTHON_CMD" -m venv "$VENV_PATH"
-    echo "   -> Upgrading pip..."
-    "$VENV_PATH/bin/pip" install --upgrade pip
-else
-    echo "   -> Virtual environment already exists."
-fi
-
-# Install dependencies using the venv's pip directly
-if [ -f "requirements.txt" ]; then
-    echo "   -> Installing dependencies from requirements.txt..."
-    "$VENV_PATH/bin/pip" install -r requirements.txt
-    echo "   -> Dependencies installed successfully."
-else
-    echo "Error: requirements.txt not found. Cannot install dependencies."
-    exit 1
-fi
+echo -e "\nInstalling dependencies..."
+uv sync
+echo "Dependencies installed successfully."
 
 echo -e "\nSetup complete! You can now create a config file and run the program."

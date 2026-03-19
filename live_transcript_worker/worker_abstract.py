@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 from queue import Queue
 from threading import Event
 
-from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.custom_types import StreamInfoObject
+from live_transcript_worker.config import Config
+from live_transcript_worker.custom_types import StreamInfoObject
 
 
 class AbstractWorker(ABC):

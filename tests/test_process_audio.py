@@ -2,18 +2,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.live_transcript_worker.custom_types import Media, ProcessObject
-from src.live_transcript_worker.process_audio import ProcessAudio
+from live_transcript_worker.custom_types import Media, ProcessObject
+from live_transcript_worker.process_audio import ProcessAudio
 
 
 @pytest.fixture
 def mock_storage_process(mocker):
-    return mocker.patch("src.live_transcript_worker.process_audio.Storage")
+    return mocker.patch("live_transcript_worker.process_audio.Storage")
 
 
 @pytest.fixture
 def process_audio_instance(mock_storage_process, mock_config, mocker):
-    mocker.patch("src.live_transcript_worker.process_audio.WhisperModel")
+    mocker.patch("live_transcript_worker.process_audio.WhisperModel")
     ready_event = MagicMock()
     pa = ProcessAudio(ready_event)
     return pa
@@ -72,7 +72,11 @@ def test_transcribe_error(process_audio_instance, mocker):
 
 def test_process_audio_full_flow(process_audio_instance, mock_storage_process, mocker):
     # Mock transcribe
-    mocker.patch.object(process_audio_instance, "transcribe", return_value=([(0.0, "hello"), (1.0, "world")], 5.0))
+    mocker.patch.object(
+        process_audio_instance,
+        "transcribe",
+        return_value=([(0.0, "hello"), (1.0, "world")], 5.0),
+    )
 
     item = ProcessObject(raw=b"data", audio_start_time=100.0, key="key", media_type=Media.AUDIO)
 

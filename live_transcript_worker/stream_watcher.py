@@ -4,12 +4,12 @@ import time
 from queue import Empty, Queue
 from threading import Event, Thread
 
-from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
-from src.live_transcript_worker.helper import StreamHelper
-from src.live_transcript_worker.process_audio import ProcessAudio
-from src.live_transcript_worker.storage import Storage
-from src.live_transcript_worker.worker import Worker
+from live_transcript_worker.config import Config
+from live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
+from live_transcript_worker.helper import StreamHelper
+from live_transcript_worker.process_audio import ProcessAudio
+from live_transcript_worker.storage import Storage
+from live_transcript_worker.worker import Worker
 
 logger = logging.getLogger(__name__)
 

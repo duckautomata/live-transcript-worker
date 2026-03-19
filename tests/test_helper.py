@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
-from src.live_transcript_worker.custom_types import Media
-from src.live_transcript_worker.helper import StreamHelper
+from live_transcript_worker.custom_types import Media
+from live_transcript_worker.helper import StreamHelper
 
 
 def test_remove_date():
@@ -15,7 +15,10 @@ def test_remove_date():
 def test_get_stream_stats_success(mocker):
     mock_popen = mocker.patch("subprocess.Popen")
     process_mock = MagicMock()
-    process_mock.communicate.return_value = ('{"is_live": true, "id": "123", "title": "Test Title", "release_timestamp": 12345}', "")
+    process_mock.communicate.return_value = (
+        '{"is_live": true, "id": "123", "title": "Test Title", "release_timestamp": 12345}',
+        "",
+    )
     process_mock.returncode = 0
     mock_popen.return_value = process_mock
 
@@ -68,7 +71,11 @@ def test_get_stream_stats_json_error(mocker):
 
 
 def test_get_stream_stats_until_valid_start_immediate(mocker):
-    mocker.patch.object(StreamHelper, "get_stream_stats", return_value=MagicMock(is_live=True, start_time="12345"))
+    mocker.patch.object(
+        StreamHelper,
+        "get_stream_stats",
+        return_value=MagicMock(is_live=True, start_time="12345"),
+    )
     info = StreamHelper.get_stream_stats_until_valid_start("url", 5)
     assert info.start_time == "12345"
 
@@ -110,7 +117,7 @@ def test_get_duration_error(mocker):
 
 
 def test_get_media_type(mocker):
-    mock_config = mocker.patch("src.live_transcript_worker.helper.Config")
+    mock_config = mocker.patch("live_transcript_worker.helper.Config")
     mock_config.get_streamer_config.return_value = {"media_type": Media.VIDEO}
     assert StreamHelper.get_media_type("http://youtube.com", "key") == Media.VIDEO
 

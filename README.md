@@ -98,6 +98,7 @@ _Cons_
 ### Tech Used
 - Python 3.12
 - FFmpeg
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 
@@ -111,26 +112,28 @@ _Cons_
 
 **NOTE**: This is only required to run the the source code. If you only want to run it and not develop it, then check out the [Docker seciton](#docker)
 
-1. If you plan on using a GPU, download and install the NVIDIA libraries
+1. If you do not want to install any NVIDIA libraries, you can run the code in a dev container for development work.
+2. If you do not want to use a dev containerm, then download and install the NVIDIA libraries
     - [cuBLAS for CUDA 12 via CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
         >_Note: There are other options for installing cuBLAS. You can find them [here](https://developer.nvidia.com/cublas). But the CUDA Toolkit is the easiest._
     - [cuDNN 9 for CUDA 12](https://developer.nvidia.com/cudnn)
     - **_Note_**: I use `cuda-toolkit-12-9` and `cudnn9-cuda-12-9` for my local development. You cannot use cuda-13 because it does not support cuda-13 at this moment.
-2. Run `scripts/setup.sh`
-3. Referencing `config/example.yaml`, create `config/config.yaml` and add your specific configurations.
+3. Run `scripts/setup.sh`
+4. Referencing `config/example.yaml`, create `config/config.yaml` and add your specific configurations.
 
 When all of that is done, you can run `scripts/run.sh` to start live-transcript-worker.
 
-If you wish to create more configuration files (example: dev.yaml), then you can specify what config to use by adding the name of the config file as the first argument. Example `scripts/run.sh dev.yaml` to use the dev.yaml config.
+If you wish to create more configuration files (example: dev.yaml), then you can specify what config to use by adding the name of the config file as the first argument. Example `scripts/run.sh dev` to use the dev.yaml config.
 
 ### Debugging/Logging
 
 Logging is set up for the entire program, and everything should be logged. The console will print info and higher logs (everything but debug). On startup, a log file under `tmp/` will be created and will contain every log. In the event of an error, check this log file to see what went wrong.
 
 ### Updating Packages
-Run `./scripts/update.sh` to update all packages. I find this to be a far better and more stable way to update all packages.
-
-When you want to add a new package, add it to the list in the script.
+```bash
+uv lock --upgrade
+uv sync
+```
 
 ## Docker
 
@@ -159,14 +162,17 @@ The major version between Worker and Server _should_ remain consistent.
 You can view all tags on [Dockerhub](https://hub.docker.com/r/duckautomata/live-transcript-worker/tags)
 
 ### Running with Docker
-The easiest way to run the docker image is to
-1. clone this repo locally
-2. create `config.yaml` from the example config file, adding in your specific configurations.
-3. then run `./docker/start.sh`
-
-If there are permission errors and the container cannot write to tmp/, then you first need to run `sudo chmod -R 777 tmp models` to give the container permissions.
-
-Depending on your use case, you can change the configuration variables in `start.sh` to match your needs.
+1. copy `docker-compose.yml`
+2. create `config.yaml` from the example config file. Place it in the root dir where docker-compose.yml exists.
+3. create the data directory
+```bash
+mkdir -p ./{tmp,model}
+chmod -R 777 ./tmp ./model
+```
+4. Then start the container:
+```bash
+docker compose up -d
+```
 
 The models are not installed in the image. So, on the first start, it will download the model specified in the config file. However, any subsequent starts will reuse the model since the model folder `model/` is stored outside the container.
 

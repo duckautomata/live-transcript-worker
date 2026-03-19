@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.live_transcript_worker.custom_types import Media, MediaUploadObject
-from src.live_transcript_worker.storage import Storage
+from live_transcript_worker.custom_types import Media, MediaUploadObject
+from live_transcript_worker.storage import Storage
 
 
 @pytest.fixture
@@ -15,7 +15,7 @@ def storage(mock_config, mocker):
     Storage._instances = {}
 
     # Patch Config in storage module just to be sure
-    mocker.patch("src.live_transcript_worker.storage.Config", mock_config)
+    mocker.patch("live_transcript_worker.storage.Config", mock_config)
 
     return Storage()
 
@@ -26,8 +26,16 @@ def test_singleton(storage):
 
 
 def test_create_paths(storage, tmp_path, mocker):
-    mocker.patch.object(storage, "_get_marshal_file", return_value=str(tmp_path / "key" / "data.marshal"))
-    mocker.patch.object(storage, "_get_transcript_file", return_value=str(tmp_path / "key" / "transcript.text"))
+    mocker.patch.object(
+        storage,
+        "_get_marshal_file",
+        return_value=str(tmp_path / "key" / "data.marshal"),
+    )
+    mocker.patch.object(
+        storage,
+        "_get_transcript_file",
+        return_value=str(tmp_path / "key" / "transcript.text"),
+    )
     mocker.patch.object(storage, "_get_queue_folder", return_value=str(tmp_path / "key" / "queue"))
 
     storage.create_paths("key")
@@ -54,7 +62,10 @@ def test_activate_new_stream(storage, mocker):
 
     # mock queue to verify clearing
     storage._Storage__upload_queue = MagicMock()
-    storage._Storage__upload_queue.empty.side_effect = [False, True]  # One item then empty
+    storage._Storage__upload_queue.empty.side_effect = [
+        False,
+        True,
+    ]  # One item then empty
     storage._Storage__upload_queue.get_nowait.return_value = "item"
 
     storage.activate(info)
@@ -114,7 +125,11 @@ def test_deactivate(storage, mocker):
 
 
 def test_add_new_line(storage, mocker, tmp_path):
-    mocker.patch.object(storage, "_file_to_dict", return_value={"streamId": "a12", "transcript": [{"id": 0}], "startTime": 0})
+    mocker.patch.object(
+        storage,
+        "_file_to_dict",
+        return_value={"streamId": "a12", "transcript": [{"id": 0}], "startTime": 0},
+    )
     mock_dict_to_file = mocker.patch.object(storage, "_dict_to_file")
     storage.client = MagicMock()
     storage.client.post.return_value = MagicMock(status_code=200)
@@ -148,7 +163,11 @@ def test_add_new_line(storage, mocker, tmp_path):
 
 
 def test_add_new_line_sync_error(storage, mocker, tmp_path):
-    mocker.patch.object(storage, "_file_to_dict", return_value={"streamId": "345", "transcript": [], "startTime": 0})
+    mocker.patch.object(
+        storage,
+        "_file_to_dict",
+        return_value={"streamId": "345", "transcript": [], "startTime": 0},
+    )
     mocker.patch.object(storage, "_dict_to_file")
     storage.client = MagicMock()
     storage.client.post.return_value = MagicMock(status_code=409)
@@ -171,7 +190,10 @@ def test_media_upload_worker(storage, mocker, tmp_path):
 
     # Mock queue.get to return item then raise exception to break loop
     storage._Storage__upload_queue = MagicMock()
-    storage._Storage__upload_queue.get.side_effect = [MediaUploadObject("key", "123", 2, str(file_path)), Exception("Stop Loop")]
+    storage._Storage__upload_queue.get.side_effect = [
+        MediaUploadObject("key", "123", 2, str(file_path)),
+        Exception("Stop Loop"),
+    ]
 
     storage.client = MagicMock()
     storage.client.post.return_value = MagicMock(status_code=200)
@@ -198,7 +220,7 @@ def test_media_upload_worker(storage, mocker, tmp_path):
 def test_process_old_queue_files_bfs_uneven(mocker, tmp_path, mock_config):
     # Reset singleton and ensure it uses mock_config
     Storage._instances = {}
-    mocker.patch("src.live_transcript_worker.storage.Config", mock_config)
+    mocker.patch("live_transcript_worker.storage.Config", mock_config)
     mocker.patch("threading.Thread")  # Don't start worker thread
 
     # Setup streamers config
@@ -208,7 +230,11 @@ def test_process_old_queue_files_bfs_uneven(mocker, tmp_path, mock_config):
     storage = Storage()
 
     # Mock _get_queue_folder to use tmp_path
-    mocker.patch.object(storage, "_get_queue_folder", side_effect=lambda key: str(tmp_path / key / "queue"))
+    mocker.patch.object(
+        storage,
+        "_get_queue_folder",
+        side_effect=lambda key: str(tmp_path / key / "queue"),
+    )
 
     # Create directories
     (tmp_path / "test1" / "queue").mkdir(parents=True)
@@ -259,11 +285,14 @@ def test_process_old_queue_files_bfs_uneven(mocker, tmp_path, mock_config):
 def test_process_old_queue_files_empty(mocker, mock_config, tmp_path):
     # Reset singleton
     Storage._instances = {}
-    mocker.patch("src.live_transcript_worker.storage.Config", mock_config)
+    mocker.patch("live_transcript_worker.storage.Config", mock_config)
     mocker.patch("threading.Thread")
 
     # Mock _get_queue_folder to use tmp_path so we don't pick up real files
-    mocker.patch("src.live_transcript_worker.storage.Storage._get_queue_folder", side_effect=lambda key: str(tmp_path / key / "queue"))
+    mocker.patch(
+        "live_transcript_worker.storage.Storage._get_queue_folder",
+        side_effect=lambda key: str(tmp_path / key / "queue"),
+    )
 
     # Case 1: No streamers
     mock_config.get_all_streamers_config.return_value = []

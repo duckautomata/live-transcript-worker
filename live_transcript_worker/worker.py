@@ -2,10 +2,10 @@ import logging
 from queue import Queue
 from threading import Event
 
-from src.live_transcript_worker.custom_types import StreamInfoObject
-from src.live_transcript_worker.worker_buffered import MPEGBufferedWorker
-from src.live_transcript_worker.worker_dash import DASHWorker
-from src.live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
+from live_transcript_worker.custom_types import StreamInfoObject
+from live_transcript_worker.worker_buffered import MPEGBufferedWorker
+from live_transcript_worker.worker_dash import DASHWorker
+from live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
 
 logger = logging.getLogger(__name__)
 

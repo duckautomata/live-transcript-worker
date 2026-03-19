@@ -7,14 +7,14 @@ from threading import Event
 
 from faster_whisper import WhisperModel
 
-from src.live_transcript_worker.config import Config
-from src.live_transcript_worker.custom_types import Media, ProcessObject
-from src.live_transcript_worker.storage import Storage
+from live_transcript_worker.config import Config
+from live_transcript_worker.custom_types import Media, ProcessObject
+from live_transcript_worker.storage import Storage
 
 logger = logging.getLogger(__name__)
 
 
-class ProcessAudio(object):
+class ProcessAudio:
     """
     Processes audio chunks, transcribes the audio chunks, and upload the results to the server.
     """
@@ -85,10 +85,7 @@ class ProcessAudio(object):
             del item.raw
             item.raw = None
         total_processing_time = time.time() - start_time
-        if duration < 0:
-            duration_time_str = "ERROR"
-        else:
-            duration_time_str = f"duration: {duration:.3f}"
+        duration_time_str = "ERROR" if duration < 0 else f"duration: {duration:.3f}"
 
         logger.info(
             f"[{item.key}][process_audio] time: {(total_processing_time):.3f}, t_time:{transcription_time:.3f}, {duration_time_str}, size: {(size / 1024.0):.3f} KiB"

@@ -2,13 +2,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.live_transcript_worker.custom_types import Media, StreamInfoObject
-from src.live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
+from live_transcript_worker.custom_types import Media, StreamInfoObject
+from live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
 
 
 @pytest.fixture
 def fixed_worker(mocker):
-    mocker.patch("src.live_transcript_worker.worker_abstract.Config")
+    mocker.patch("live_transcript_worker.worker_abstract.Config")
     queue = MagicMock()
     stop_event = MagicMock()
     worker = MPEGFixedBitrateWorker("key", queue, stop_event)

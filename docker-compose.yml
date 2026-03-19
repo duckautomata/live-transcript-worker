@@ -1,0 +1,15 @@
+services:
+  live_transcript_worker:
+    image: duckautomata/live-transcript-worker:latest
+    restart: always
+    volumes:
+      - ./config.yaml:/app/config/config.yaml:ro,z
+      - ./tmp:/app/tmp:z
+      - ./models:/app/models:z
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

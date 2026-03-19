@@ -3,8 +3,8 @@ from threading import Event
 
 import pytest
 
-from src.live_transcript_worker.custom_types import Media, ProcessObject
-from src.live_transcript_worker.process_audio import ProcessAudio
+from live_transcript_worker.custom_types import Media, ProcessObject
+from live_transcript_worker.process_audio import ProcessAudio
 
 
 @pytest.mark.integration
@@ -37,8 +37,8 @@ def test_real_whisper_transcription(mocker, audio_filename, min_chars, max_chars
         pytest.skip(f"Audio file not found at {audio_path}")
 
     # 2. Mock Storage and Config (we don't want to hit the network or use GPU)
-    mock_storage_cls = mocker.patch("src.live_transcript_worker.process_audio.Storage")
-    mock_config_cls = mocker.patch("src.live_transcript_worker.process_audio.Config")
+    mock_storage_cls = mocker.patch("live_transcript_worker.process_audio.Storage")
+    mock_config_cls = mocker.patch("live_transcript_worker.process_audio.Config")
     mock_config_cls.get_transcription_config.return_value = {
         "model": "small",
         "device": "cpu",
@@ -59,7 +59,12 @@ def test_real_whisper_transcription(mocker, audio_filename, min_chars, max_chars
 
     # 5. Create ProcessObject
     # We set audio_start_time to 100.0 to verify the timestamp logic
-    item = ProcessObject(raw=raw_audio, audio_start_time=100.0, key="test_integration_key", media_type=Media.AUDIO)
+    item = ProcessObject(
+        raw=raw_audio,
+        audio_start_time=100.0,
+        key="test_integration_key",
+        media_type=Media.AUDIO,
+    )
 
     # 6. Run process_audio
     # This calls transcribe, then storage.update

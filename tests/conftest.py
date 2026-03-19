@@ -10,14 +10,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 @pytest.fixture
 def mock_config(mocker):
     """Mocks the Config class."""
-    mock_conf = mocker.patch("src.live_transcript_worker.config.Config")
+    mock_conf = mocker.patch("live_transcript_worker.config.Config")
     # Default values for common lookups
     mock_conf.get_server_config.return_value = {
         "url": "http://localhost:8080",
         "apiKey": "test-key",
         "enabled": True,
     }
-    mock_conf.get_transcription_config.return_value = {"model": "base", "device": "cpu", "compute_type": "int8"}
+    mock_conf.get_transcription_config.return_value = {
+        "model": "base",
+        "device": "cpu",
+        "compute_type": "int8",
+    }
     mock_conf.get_streamer_config.return_value = {"media_type": "audio"}
     mock_conf.get_id_blacklist_config.return_value = []
     # If get_config is called directly
@@ -41,7 +45,7 @@ def mock_storage(mocker):
 
     # We will patch the imported class in the modules where it is used usually.
     # But for a general fixture, let's try to patch the class in storage.py
-    return mocker.patch("src.live_transcript_worker.storage.Storage")
+    return mocker.patch("live_transcript_worker.storage.Storage")
 
 
 @pytest.fixture

@@ -16,7 +16,7 @@ class Config:
         project_root_dir = os.path.dirname(os.path.abspath(__name__))
         config_path = os.path.join(project_root_dir, "config", Config.config_filename)
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 config_data = yaml.safe_load(f)
                 return config_data
         except FileNotFoundError:
@@ -73,9 +73,8 @@ class Config:
             return {}
 
         for streamer in streamer_list:
-            if isinstance(streamer, dict) and "key" in streamer:
-                if streamer["key"] == key:
-                    return streamer
+            if isinstance(streamer, dict) and "key" in streamer and streamer["key"] == key:
+                return streamer
 
         return {}
 

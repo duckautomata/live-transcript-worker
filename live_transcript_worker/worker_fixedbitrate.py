@@ -2,8 +2,8 @@ import logging
 import subprocess
 import time
 
-from src.live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
-from src.live_transcript_worker.worker_abstract import AbstractWorker
+from live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
+from live_transcript_worker.worker_abstract import AbstractWorker
 
 logger = logging.getLogger(__name__)
 
@@ -103,10 +103,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 "-",
                 info.url,
             ]
-            if "twitch.tv" in info.url.lower():
-                sample_rate = self.twitch_audio_rate
-            else:
-                sample_rate = self.yt_audio_rate
+            sample_rate = self.twitch_audio_rate if "twitch.tv" in info.url.lower() else self.yt_audio_rate
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
             logger.debug(f"[{info.key}][MPEGFixedBitrateWorker][create_process] successfully created yt-dlp download process.")
             return process, sample_rate
