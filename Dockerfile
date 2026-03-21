@@ -48,4 +48,4 @@ VOLUME ["/app/tmp", "/app/models"]
 ENV APP_VERSION=${APP_VERSION}
 ENV BUILD_DATE=${BUILD_DATE}
 
-CMD ["uv", "run", "main.py"]
+CMD ["uv", "run", "--no-dev", "main.py"]
