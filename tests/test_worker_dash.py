@@ -136,7 +136,7 @@ def test_monitor_loop(dash_worker, mocker):
     process = MagicMock()
     process.poll.return_value = None
 
-    dash_worker.stop_event.is_set.side_effect = [False, True]
+    dash_worker.stop_event.is_set.side_effect = [False, False, True]
     dash_worker.buffer_size_seconds = 6
 
     dash_worker._monitor_loop(info, "/tmp", "state", process, 0, 100.0)
@@ -195,7 +195,7 @@ def test_monitor_loop_stale_processing(dash_worker, mocker):
     process = MagicMock()
     process.poll.return_value = None
 
-    dash_worker.stop_event.is_set.side_effect = [False, False, True]
+    dash_worker.stop_event.is_set.side_effect = [False, False, False, False, True]
     dash_worker.buffer_size_seconds = 6
     dash_worker.stale_time_threshold = 10
 

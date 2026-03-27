@@ -1,0 +1,43 @@
+name: Python Test
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Tests
+        run: uv run pytest tests --ignore-glob=tests/test_whisper_*.py --junitxml=junit.xml
+
+      - name: Report Test Results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Python Test Results
+          path: junit.xml
+          reporter: java-junit

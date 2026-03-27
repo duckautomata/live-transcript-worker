@@ -13,3 +13,19 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+  watchtower:
+    image: nickfedor/watchtower:latest
+    volumes:
+      # Run `echo "UID=$(id -u)" > .env` in the folder this file is in to set the UID
+      - /run/user/${UID:-1000}/docker.sock:/var/run/docker.sock:z
+    environment:
+      # Update with local timezone
+      - TZ=America/New_York
+      # Standard Cron format: (Seconds Minutes Hours DayMonth Month DayWeek)
+      - WATCHTOWER_SCHEDULE=0 0 5 * * *
+      - WATCHTOWER_CLEANUP=true
+      # Notifications
+      - WATCHTOWER_NOTIFICATION_URL=discord://your_token@your_channel_id
+      - WATCHTOWER_NOTIFICATIONS_HOSTNAME=my-server
+      - WATCHTOWER_NO_STARTUP_MESSAGE=true
