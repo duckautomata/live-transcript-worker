@@ -1,5 +1,5 @@
 # NVIDIA base image
-FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04
+FROM nvidia/cuda:13.2.0-cudnn-runtime-ubuntu24.04
 ARG CACHEBUST=1
 ARG APP_VERSION="unknown"
 ARG BUILD_DATE="unknown"
