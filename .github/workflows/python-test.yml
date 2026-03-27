@@ -1,4 +1,4 @@
-name: Python Test
+name: Test Pipeline
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
