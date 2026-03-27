@@ -13,7 +13,7 @@ class ConcreteWorker(AbstractWorker):
 
 
 @pytest.fixture
-def abstract_worker():
+def abstract_worker(mock_config):
     return ConcreteWorker(key="key", queue=MagicMock(), stop_event=Event())
 
 
