@@ -14,20 +14,6 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "chore"
-    labels:
-      - "dependabot"
-    groups:
-      docker-deps:
-        patterns:
-          - "*"
-
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
