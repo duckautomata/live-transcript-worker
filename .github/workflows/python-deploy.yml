@@ -5,6 +5,14 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "Version bump type"
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+
   push:
     branches: ["master"]
     paths:
@@ -13,29 +21,30 @@ on:
       - "uv.lock"
       - "config/example.yaml"
       - "Dockerfile"
-      - "scripts/ci-build.sh"
       - ".github/workflows/python-deploy.yml"
 
 jobs:
-  deploy:
+
+  # ─────────────────────────────────────────────
+  # JOB 1 — Code quality + tests
+  # ─────────────────────────────────────────────
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: production
+    timeout-minutes: 10
     permissions:
-      contents: write
-      checks: write
+      contents: read
+      checks: write  # required by dorny/test-reporter
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.4.1
         with:
           python-version-file: "pyproject.toml"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install Dependencies
         run: uv sync --all-extras --dev
@@ -50,46 +59,132 @@ jobs:
         run: uv run pytest tests --ignore-glob=tests/test_whisper_*.py --junitxml=junit.xml
 
       - name: Report Test Results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@dc3021bd4523717e27f26a9571c76fc98e35b341  # v1.10.0
         if: always()
         with:
           name: Python Test Results
           path: junit.xml
           reporter: java-junit
+          fail-on-error: true
+
+  # ─────────────────────────────────────────────
+  # JOB 2 — Docker build & push
+  # ─────────────────────────────────────────────
+  build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test  # only runs if tests pass
+    environment: production
+    permissions:
+      contents: read
+
+    # Expose the calculated version to the release job
+    outputs:
+      new_version: ${{ steps.tag_version.outputs.new_version }}
+      release_type: ${{ steps.tag_version.outputs.release_type }}
+      changelog: ${{ steps.tag_version.outputs.changelog }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Calculate Next Version
+        # dry_run=true means we calculate the next semver but do NOT create the git tag yet.
+        # The actual tag is created in the release job only after a successful Docker push.
         id: tag_version
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b  # v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
-          dry_run: true  # calculates the version but does NOT create the tag
+          default_bump: ${{ inputs.bump_type || 'patch' }}
+          dry_run: true
+
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbea8a39b8b3b8b1e3c16adb7270  # v5.7.0
+        with:
+          images: duckautomata/live-transcript-worker
+          tags: |
+            type=raw,value=${{ steps.tag_version.outputs.new_version }}
+            type=raw,value=latest
+
+      - name: Set up Docker Buildx
+      # Buildx must be set up before login and before the build step.
+      # It is required for the GHA cache backend (cache-from/cache-to).
+        uses: docker/setup-buildx-action@b5730b70e78a1fa8bd2b3ef78c5e78af11e753e5  # v3.10.0
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and Push Docker Image
-        env:
-          NEW_VERSION: ${{ steps.tag_version.outputs.new_version }}
-        run: bash ./scripts/ci-build.sh
+      - name: Get Latest Dependency Versions
+        # Used as a cache key for the yt-dlp/deno install step.
+        # Any new release invalidates the cache and forces docker to install it.
+        id: versions
+        run: |
+          resolve_version() {
+            curl -sI "https://github.com/$1/releases/latest" \
+              | grep -i '^location:' \
+              | sed 's|.*/tag/||' \
+              | tr -d '[:space:]'
+          }
+
+          YTDLP_VERSION=$(resolve_version "yt-dlp/yt-dlp")
+          DENO_VERSION=$(resolve_version "denoland/deno")
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "ytdlp=$YTDLP_VERSION" >> $GITHUB_OUTPUT
+          echo "deno=$DENO_VERSION"   >> $GITHUB_OUTPUT
+          echo "date=$BUILD_DATE"     >> $GITHUB_OUTPUT
+
+          echo "Resolved yt-dlp version: $YTDLP_VERSION"
+          echo "Resolved Deno version:   $DENO_VERSION"
+          echo "Using Build Date:        $BUILD_DATE"
+
+      - name: Build and Push
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1  # v6.16.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.tag_version.outputs.new_version }}
+            BUILD_DATE=${{ steps.versions.outputs.date }}
+            YTDLP_VERSION=${{ steps.versions.outputs.ytdlp }}
+            DENO_VERSION=${{ steps.versions.outputs.deno }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────────
+  # JOB 3 — Tag + GitHub Release
+  # ─────────────────────────────────────────────
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: build-push  # only runs after a successful Docker push
+    permissions:
+      contents: write # required to create the tag and release
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Create Git Tag
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b  # v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          custom_tag: ${{ steps.tag_version.outputs.new_version }}
+          custom_tag: ${{ needs.build-push.outputs.new_version }}
           tag_prefix: v
 
       - name: Create GitHub Release
         if: |
-          startsWith(steps.tag_version.outputs.release_type, 'minor') ||
-          startsWith(steps.tag_version.outputs.release_type, 'major')
-        uses: ncipollo/release-action@v1
+          startsWith(needs.build-push.outputs.release_type, 'minor') ||
+          startsWith(needs.build-push.outputs.release_type, 'major')
+        uses: ncipollo/release-action@bcfe5469af6813e77a9e2c3de5a44b9cf9c4e9c8  # v1.16.0
         with:
-          tag: v${{ steps.tag_version.outputs.new_version }}
-          name: v${{ steps.tag_version.outputs.new_version }}
-          body: ${{ steps.tag_version.outputs.changelog }}
+          tag: v${{ needs.build-push.outputs.new_version }}
+          name: v${{ needs.build-push.outputs.new_version }}
+          body: ${{ needs.build-push.outputs.changelog }}
           generateReleaseNotes: true

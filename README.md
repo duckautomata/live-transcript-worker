@@ -145,22 +145,6 @@ uv sync
 
 To verify that everyone is set up correctly, run the command `docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi` and it should print out the GPU information.
 
-### Version Guide
-Uses an x.y major.minor version standard.
-
-Major version is used to denote any API/breaking changes.
-
-Minor version is used to denote any code/dependency changes that do not break anything.
-
-Tags:
-- `latest` will always be the most recent image.
-- `x` will be the latest x major version image. Meaning, if the tag is `2` and the latest `2.y` image is `2.10`, then `2` will use the `2.10` image. When a new `2.11` image is created, then the tag `2` will use that new image.
-- `x.y` will be a specific image.
-
-The major version between Worker and Server _should_ remain consistent.
-
-You can view all tags on [Dockerhub](https://hub.docker.com/r/duckautomata/live-transcript-worker/tags)
-
 ### Running with Docker
 1. copy `docker-compose.yml`
 2. create `config.yaml` from the example config file. Place it in the root dir where docker-compose.yml exists.

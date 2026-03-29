@@ -11,22 +11,21 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     permissions:
       contents: read
-      checks: write
+      checks: write  # required by dorny/test-reporter
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.4.1
         with:
           python-version-file: "pyproject.toml"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install Dependencies
         run: uv sync --all-extras --dev
@@ -41,9 +40,10 @@ jobs:
         run: uv run pytest tests --ignore-glob=tests/test_whisper_*.py --junitxml=junit.xml
 
       - name: Report Test Results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@dc3021bd4523717e27f26a9571c76fc98e35b341  # v1.10.0
         if: always()
         with:
           name: Python Test Results
           path: junit.xml
           reporter: java-junit
+          fail-on-error: true
