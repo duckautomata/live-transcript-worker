@@ -37,10 +37,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.4.1
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
         with:
           python-version-file: "pyproject.toml"
           enable-cache: true
@@ -59,7 +59,7 @@ jobs:
         run: uv run pytest tests --ignore-glob=tests/test_whisper_*.py --junitxml=junit.xml
 
       - name: Report Test Results
-        uses: dorny/test-reporter@dc3021bd4523717e27f26a9571c76fc98e35b341  # v1.10.0
+        uses: dorny/test-reporter@a6ddd83ac95ff4586f5d3aceeb314d9a1841db95  # v3.0.0
         if: always()
         with:
           name: Python Test Results
@@ -86,13 +86,13 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Calculate Next Version
         # dry_run=true means we calculate the next semver but do NOT create the git tag yet.
         # The actual tag is created in the release job only after a successful Docker push.
         id: tag_version
-        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b  # v6.2
+        uses: mathieudutour/github-tag-action@d28fa2ccfbd16e871a4bdf35e11b3ad1bd56c0c1  # v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           default_bump: ${{ inputs.bump_type || 'patch' }}
@@ -100,7 +100,7 @@ jobs:
 
       - name: Extract Docker Metadata
         id: meta
-        uses: docker/metadata-action@902fa8ec7d6ecbea8a39b8b3b8b1e3c16adb7270  # v5.7.0
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
         with:
           images: duckautomata/live-transcript-worker
           tags: |
@@ -110,10 +110,10 @@ jobs:
       - name: Set up Docker Buildx
       # Buildx must be set up before login and before the build step.
       # It is required for the GHA cache backend (cache-from/cache-to).
-        uses: docker/setup-buildx-action@b5730b70e78a1fa8bd2b3ef78c5e78af11e753e5  # v3.10.0
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
       - name: Login to Docker Hub
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
@@ -143,7 +143,7 @@ jobs:
           echo "Using Build Date:        $BUILD_DATE"
 
       - name: Build and Push
-        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1  # v6.16.0
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294  # v7.0.0
         with:
           context: .
           push: true
@@ -169,10 +169,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Create Git Tag
-        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b  # v6.2
+        uses: mathieudutour/github-tag-action@d28fa2ccfbd16e871a4bdf35e11b3ad1bd56c0c1  # v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           custom_tag: ${{ needs.build-push.outputs.new_version }}
@@ -182,7 +182,7 @@ jobs:
         if: |
           startsWith(needs.build-push.outputs.release_type, 'minor') ||
           startsWith(needs.build-push.outputs.release_type, 'major')
-        uses: ncipollo/release-action@bcfe5469af6813e77a9e2c3de5a44b9cf9c4e9c8  # v1.16.0
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           tag: v${{ needs.build-push.outputs.new_version }}
           name: v${{ needs.build-push.outputs.new_version }}

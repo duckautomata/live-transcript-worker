@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.4.1
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
         with:
           python-version-file: "pyproject.toml"
           enable-cache: true
@@ -40,7 +40,7 @@ jobs:
         run: uv run pytest tests --ignore-glob=tests/test_whisper_*.py --junitxml=junit.xml
 
       - name: Report Test Results
-        uses: dorny/test-reporter@dc3021bd4523717e27f26a9571c76fc98e35b341  # v1.10.0
+        uses: dorny/test-reporter@a6ddd83ac95ff4586f5d3aceeb314d9a1841db95  # v3.0.0
         if: always()
         with:
           name: Python Test Results
