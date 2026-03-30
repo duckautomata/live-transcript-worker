@@ -42,7 +42,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
         with:
-          python-version-file: "pyproject.toml"
+          version-file: "pyproject.toml"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -77,12 +77,6 @@ jobs:
     environment: production
     permissions:
       contents: read
-
-    # Expose the calculated version to the release job
-    outputs:
-      new_version: ${{ steps.tag_version.outputs.new_version }}
-      release_type: ${{ steps.tag_version.outputs.release_type }}
-      changelog: ${{ steps.tag_version.outputs.changelog }}
 
     steps:
       - name: Checkout Code
@@ -175,16 +169,15 @@ jobs:
         uses: mathieudutour/github-tag-action@d28fa2ccfbd16e871a4bdf35e11b3ad1bd56c0c1  # v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          custom_tag: ${{ needs.build-push.outputs.new_version }}
-          tag_prefix: v
+          default_bump: ${{ inputs.bump_type || 'patch' }}
 
       - name: Create GitHub Release
         if: |
-          startsWith(needs.build-push.outputs.release_type, 'minor') ||
-          startsWith(needs.build-push.outputs.release_type, 'major')
+          startsWith(steps.tag_version.outputs.release_type, 'minor') ||
+          startsWith(steps.tag_version.outputs.release_type, 'major')
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
-          tag: v${{ needs.build-push.outputs.new_version }}
-          name: v${{ needs.build-push.outputs.new_version }}
-          body: ${{ needs.build-push.outputs.changelog }}
+          tag: v${{ steps.tag_version.outputs.new_version }}
+          name: v${{ steps.tag_version.outputs.new_version }}
+          body: ${{ steps.tag_version.outputs.changelog }}
           generateReleaseNotes: true
