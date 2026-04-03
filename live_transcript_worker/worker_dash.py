@@ -232,11 +232,11 @@ class DASHWorker(AbstractWorker):
         """
         logger.info(f"[{info.key}][DASHWorker] Verifying stream continuity by checking Fragment 1...")
 
-        # Wait for new fragment 1 to download (Max 30 seconds)
+        # Wait for new fragment 1 to download (Max 90 seconds)
         start_wait = time.time()
         new_frag_path = None
 
-        while time.time() - start_wait < 30:
+        while time.time() - start_wait < 90:
             if process.poll() is not None:
                 logger.error(f"[{info.key}][DASHWorker] Process died during verification.")
                 break
