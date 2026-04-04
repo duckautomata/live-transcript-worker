@@ -16,6 +16,7 @@ services:
 
   watchtower:
     image: nickfedor/watchtower:latest
+    restart: always
     volumes:
       # Run `echo "UID=$(id -u)" > .env` in the folder this file is in to set the UID
       - /run/user/${UID:-1000}/docker.sock:/var/run/docker.sock:z
