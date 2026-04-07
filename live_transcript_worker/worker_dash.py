@@ -142,6 +142,8 @@ class DASHWorker(AbstractWorker):
                 "--no-warnings",
                 "--live-from-start",
                 "--keep-fragments",
+                "--concurrent-fragments",
+                "5",
                 "--retries",
                 "20",  # Retries for the initial connection/manifest
                 "--fragment-retries",
@@ -154,7 +156,7 @@ class DASHWorker(AbstractWorker):
                 f"{fragment_dir}/%(id)s.%(format_id)s",
                 info.url,
             ]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             logger.debug(f"[{info.key}][DASHWorker] successfully created yt-dlp download process with mode {info.media_type}.")
             return process
         except Exception as e:

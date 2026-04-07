@@ -2,7 +2,13 @@
   "name": "Live Transcript Worker (Direct CUDA)",
   "build": {
     "dockerfile": "../Dockerfile",
-    "context": ".."
+    "context": "..",
+    "args": {
+      "APP_VERSION": "dev",
+      "BUILD_DATE": "2026-01-01T00:00:00Z",
+      "YTDLP_VERSION": "2026.03.17",
+      "DENO_VERSION": "v2.7.11"
+    }
   },
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
