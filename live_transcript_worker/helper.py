@@ -137,8 +137,5 @@ class StreamHelper:
         key_config = Config.get_streamer_config(key)
         if key_config:
             media_type = key_config.get("media_type", Media.NONE)
-        if "twitch.tv" in url.lower() and media_type == Media.VIDEO:
-            # Don't download video from twitch since it already has video clipping
-            media_type = Media.AUDIO
 
         return media_type
