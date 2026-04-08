@@ -121,5 +121,5 @@ def test_get_media_type(mocker):
     mock_config.get_streamer_config.return_value = {"media_type": Media.VIDEO}
     assert StreamHelper.get_media_type("http://youtube.com", "key") == Media.VIDEO
 
-    # Twitch override
-    assert StreamHelper.get_media_type("http://twitch.tv", "key") == Media.AUDIO
+    # Twitch does not override
+    assert StreamHelper.get_media_type("http://twitch.tv", "key") == Media.VIDEO
