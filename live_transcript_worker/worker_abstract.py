@@ -17,7 +17,7 @@ class AbstractWorker(ABC):
         self.queue = queue
         self.stop_event = stop_event
 
-        project_root_dir = os.path.dirname(os.path.abspath(__name__))
+        project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
         self.buffer_size_seconds: int = Config.get_server_config().get("buffer_size_seconds", 6)
         self.stale_time_threshold: int = Config.get_server_config().get("stale_time_threshold", 60)

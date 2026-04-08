@@ -111,7 +111,8 @@ class StreamWatcher:
                     self.storage.deactivate(key, info.stream_id)
                 if self.stop_event.is_set():
                     logger.info(f"[{key}][watcher] stopping")
-                    self.storage.deactivate(key, info.stream_id)
+                    if not info.is_live:
+                        self.storage.deactivate(key, info.stream_id)
                     return
             next_check = time.time() + self.seconds_between_channel_retry + random.randint(-5, 10)
             time.sleep(0.5)

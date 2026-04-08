@@ -37,7 +37,7 @@ class DASHWorker(AbstractWorker):
         logger.info(f"[{info.key}][DASHWorker] Starting")
 
         # Setup paths
-        project_root_dir = os.path.dirname(os.path.abspath(__name__))
+        project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         fragment_dir = os.path.join(project_root_dir, "tmp", info.key, "fragments")
         state_file = os.path.join(project_root_dir, "tmp", info.key, "dash_state.json")
 
@@ -311,7 +311,7 @@ class DASHWorker(AbstractWorker):
             except Exception as e:
                 logger.warning(f"[{info.key}][DASHWorker] failed to cleanup dir {fragment_dir}: {e}")
 
-        if info.stream_id:
+        if info.stream_id and os.path.exists(fragment_dir):
             # Additional cleanup for specific issue where stale files might linger
             try:
                 files = glob.glob(os.path.join(fragment_dir, f"{info.stream_id}*"))
@@ -368,7 +368,6 @@ class DASHWorker(AbstractWorker):
                 return has_video and has_audio
         except Exception:
             return False
-        return False
 
     def _load_state(self, state_path: str, current_stream_id: str, default_start_time: float) -> tuple[int, float]:
         """Loads the last processed sequence and current stream time from the state file."""

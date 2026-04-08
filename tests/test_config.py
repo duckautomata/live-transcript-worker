@@ -13,29 +13,6 @@ def temp_config_file(tmp_path, mocker):
     config_dir.mkdir()
     config_file = config_dir / "config.yaml"
 
-    # Mock where the Config class looks for the file
-    # We need to patch the path resolution inside Config.get_config
-    # But since Config.get_config uses os.path.dirname(os.path.abspath(__name__)),
-    # it's tricky to mock project_root_dir without changing the code or using a sophisticated mock.
-    # A cleaner way is to mock open() or mock the return of get_config for consumers.
-
-    # However, to test loading logic itself, we should try to point it to our temp file.
-    # We can mock `os.path.abspath` or `os.path.join` but that's risky.
-    # Let's inspect config.py again.
-    # It does: `project_root_dir = os.path.dirname(os.path.abspath(__name__))`
-    # This `__name__` refers to `live_transcript_worker.config`.
-
-    # Actually, the Config class is hardcoded to look in relative path based on `__name__`.
-    # We can patch `os.path.abspath` to return the parent of our `tmp_path` so that `join(..., "config", ...)` resolves to `tmp_path/config/...`
-    # But `__name__` in config.py is just a string.
-    # `os.path.abspath(__name__)` where `__name__` is `live_transcript_worker.config` ... wait.
-    # passing a module name to abspath? That seems wrong in the original code if it meant `__file__`.
-    # Let's check the original code: `os.path.dirname(os.path.abspath(__name__))`
-    # If `__name__` is "live_transcript_worker.config", abspath will try to resolve that file in CWD.
-
-    # If the original code uses `__name__` instead of `__file__`, that might be a bug or I misread it.
-    # Let's assume for now we mock `os.path.abspath` to return `str(tmp_path)`.
-
     return config_file
 
 

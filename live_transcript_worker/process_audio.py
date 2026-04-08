@@ -19,6 +19,29 @@ class ProcessAudio:
     Processes audio chunks, transcribes the audio chunks, and upload the results to the server.
     """
 
+    _DECENSOR_MAP = {
+        "f**k": "fuck",
+        "f***ing": "fucking",
+        "f*****g": "fucking",
+        "f******": "fucking",
+        "fuck***t": "fucking bullshit",
+        "fuck***": "fucking",
+        "f**ing": "fucking",
+        "f*****": "fucker",
+        "f***": "fuck",
+        "f**": "fuck",
+        "sh**": "shit",
+        "s**t": "shit",
+        "s***": "shit",
+        "a**": "ass",
+        "b**ch": "bitch",
+        "b***h": "bitch",
+        "c***": "cunt",
+        "p***y": "pussy",
+        "d**n": "damn",
+        "****": "fuck",
+    }
+
     def __init__(self, ready_event: Event):
         self.storage = Storage()
         self.whisper_model = None
@@ -131,32 +154,8 @@ class ProcessAudio:
             return [], -1.0
 
     def decensor(self, text: str) -> str:
-        # Case sensitive. We replace for both lowercase and uppercase versions. So it's best to only have lowercase here.
-        # "old_word1": "new_word1"
-        word_map = {
-            "f**k": "fuck",
-            "f***ing": "fucking",
-            "f*****g": "fucking",
-            "f******": "fucking",
-            "fuck***t": "fucking bullshit",
-            "fuck***": "fucking",
-            "f**ing": "fucking",
-            "f*****": "fucker",
-            "f***": "fuck",
-            "f**": "fuck",
-            "sh**": "shit",
-            "s**t": "shit",
-            "s***": "shit",
-            "a**": "ass",
-            "b**ch": "bitch",
-            "b***h": "bitch",
-            "c***": "cunt",
-            "p***y": "pussy",
-            "d**n": "damn",
-            "****": "fuck",
-        }
-
-        for old_word, new_word in word_map.items():
+        # Case sensitive. We replace for both lowercase and uppercase versions.
+        for old_word, new_word in self._DECENSOR_MAP.items():
             text = text.replace(old_word.lower(), new_word.lower())
             text = text.replace(old_word.capitalize(), new_word.capitalize())
 

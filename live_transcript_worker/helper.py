@@ -29,7 +29,7 @@ class StreamHelper:
 
         Note: yt-dlp -j is high cpu usage for whatever reason. This should only be called very infrequently.
         """
-        project_root_dir = os.path.dirname(os.path.abspath(__name__))
+        project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
         cmd = [ytdlp_path, "-j", url]  # -j is alias for --dump-json
         process = None

@@ -12,7 +12,7 @@ from live_transcript_worker.stream_watcher import StreamWatcher
 # Logger will be used for all modules under live_transcript_worker
 app_logger = logging.getLogger("live_transcript_worker")
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-project_root_dir = os.path.dirname(os.path.abspath(__name__))
+project_root_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(project_root_dir, "tmp", f"{timestamp}.log")
 
 shutdown_event = threading.Event()

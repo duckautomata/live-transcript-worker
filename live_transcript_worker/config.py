@@ -13,7 +13,7 @@ class Config:
 
     @staticmethod
     def get_config() -> dict[str, Any] | None:
-        project_root_dir = os.path.dirname(os.path.abspath(__name__))
+        project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         config_path = os.path.join(project_root_dir, "config", Config.config_filename)
         try:
             with open(config_path, encoding="utf-8") as f:

@@ -48,7 +48,8 @@ class Storage(metaclass=SingletonMeta):
         retry_strategy = Retry(
             total=3,
             backoff_factor=2,  # 2, 4, 8
-            status_forcelist=[500, 502, 503, 504],
+            status_forcelist=[400, 404, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"],
         )
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
@@ -129,7 +130,7 @@ class Storage(metaclass=SingletonMeta):
             storage_time = time.time() - start_time
             try:
                 # Using persistent session
-                response = self.session.post(
+                response = self._post_with_retry(
                     f"{self.__base_url_session}/{info.key}/activate?id={quote(info.stream_id)}&title={quote(info.stream_title)}&startTime={quote(info.start_time)}&mediaType={quote(info.media_type)}",
                     timeout=(5, 10),  # (connect timeout, read timeout)
                 )
@@ -158,7 +159,7 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request and stream_id != "":
             storage_time = time.time() - start_time
             try:
-                response = self.session.post(
+                response = self._post_with_retry(
                     f"{self.__base_url_session}/{key}/deactivate?id={quote(stream_id)}",
                     timeout=(5, 10),  # (connect timeout, read timeout)
                 )
@@ -200,7 +201,7 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request:
             storage_time = time.time() - storage_start_time
             try:
-                response = self.session.post(
+                response = self._post_with_retry(
                     f"{self.__base_url_session}/{key}/line/{stream_id}",
                     json=line,
                     timeout=(5, 10),  # (connect timeout, read timeout)
@@ -224,7 +225,7 @@ class Storage(metaclass=SingletonMeta):
             # request disabled, so we append new line to local file
             line_text = []
             line_time = line["timestamp"]
-            start_time = int(self._file_to_dict(key).get("startTime", "0"))
+            start_time = int(data.get("startTime", "0"))
             if "segments" in line:
                 for segment in line["segments"]:
                     if "text" in segment:
@@ -256,7 +257,7 @@ class Storage(metaclass=SingletonMeta):
         if self.__enable_request:
             storage_time = time.time() - start_time
             try:
-                response = self.session.post(
+                response = self._post_with_retry(
                     f"{self.__base_url_session}/{key}/sync",
                     json=data,
                     timeout=(5, 30),  # (connect timeout, read timeout)
@@ -272,17 +273,17 @@ class Storage(metaclass=SingletonMeta):
                 logger.error(f"[{key}][sync_server][{(storage_time):.3f}] Unable to send sync request to relay: {e}")
 
     def _get_marshal_file(self, key: str):
-        project_root_dir = os.path.dirname(os.path.abspath(__name__))
+        project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         marshal_path = os.path.join(project_root_dir, "tmp", key, "data.marshal")
         return marshal_path
 
     def _get_transcript_file(self, key: str):
-        project_root_dir = os.path.dirname(os.path.abspath(__name__))
+        project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         transcript_path = os.path.join(project_root_dir, "tmp", key, "transcript.text")
         return transcript_path
 
     def _get_queue_folder(self, key: str):
-        project_root_dir = os.path.dirname(os.path.abspath(__name__))
+        project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         queue_path = os.path.join(project_root_dir, "tmp", key, "queue")
         return queue_path
 
@@ -357,13 +358,13 @@ class Storage(metaclass=SingletonMeta):
                         logger.debug(f"[{item.key}][upload_media][{item.stream_id}][{item.id}] uploading media")
                         with open(item.path, "rb") as f:
                             files = {"file": f}
-                            response = self.session.post(
+                            response = self._post_with_retry(
                                 f"{self.__base_url_session}/{item.key}/media/{item.stream_id}/{item.id}",
                                 files=files,
                                 timeout=(5, 60),  # (connect timeout, read timeout)
                             )
                             logger.debug(
-                                f"[{item.key}][upload_media][{item.stream_id}][{item.id}] media uploaded with response Response: {response.status_code} {response.text}"
+                                f"[{item.key}][upload_media][{item.stream_id}][{item.id}] media upload response: {response.status_code} {response.text}"
                             )
                         storage_time = time.time() - start_time
                         if response.status_code != 200:
@@ -451,3 +452,23 @@ class Storage(metaclass=SingletonMeta):
                 return
             time.sleep(0.5)
         logger.info("[storage] All uploads finished.")
+
+    def _post_with_retry(self, url: str, **kwargs):
+        max_attempts = 3
+        last_exc = requests.RequestException()
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self.session.post(url, **kwargs)
+                if response.status_code == 200 or response.status_code == 409 or attempt == max_attempts:
+                    return response  # success, server out of sync, or last attempt — let caller handle it
+                wait = 2**attempt
+                logger.warning(f"Request returned {response.status_code} (attempt {attempt}/{max_attempts}), retrying in {wait}s")
+                time.sleep(wait)
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt == max_attempts:
+                    raise e
+                wait = 2**attempt
+                logger.warning(f"Request failed (attempt {attempt}/{max_attempts}), retrying in {wait}s: {e}")
+                time.sleep(wait)
+        raise last_exc
