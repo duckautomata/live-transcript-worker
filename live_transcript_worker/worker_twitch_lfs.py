@@ -1,14 +1,12 @@
 import contextlib
-import io
 import logging
 import os
 import shutil
 import subprocess
 import time
 
-import av
-
 from live_transcript_worker.custom_types import Media, ProcessObject, StreamInfoObject
+from live_transcript_worker.helper import StreamHelper
 from live_transcript_worker.worker_abstract import AbstractWorker
 
 logger = logging.getLogger(__name__)
@@ -104,7 +102,7 @@ class TwitchLFSWorker(AbstractWorker):
                     with contextlib.suppress(OSError):
                         os.remove(seg_path)
 
-                duration = self._get_chunk_duration(data)
+                duration = StreamHelper.get_precise_duration(data)
                 if duration > 0 and data:
                     process_obj = ProcessObject(
                         raw=data,
@@ -172,6 +170,8 @@ class TwitchLFSWorker(AbstractWorker):
                 "pipe:0",
                 "-c",
                 "copy",
+                "-avoid_negative_ts",
+                "make_zero",
                 "-f",
                 "segment",
                 "-segment_time",
@@ -195,38 +195,3 @@ class TwitchLFSWorker(AbstractWorker):
 
     def _seg_path(self, segment_dir: str, seq: int) -> str:
         return os.path.join(segment_dir, f"{self._SEGMENT_PREFIX}{seq:06d}{self._SEGMENT_EXT}")
-
-    def _get_chunk_duration(self, data: bytes) -> float:
-        """
-        Calculates the precise duration based on the Audio Stream.
-        """
-        try:
-            with io.BytesIO(data) as buffer, av.open(buffer, mode="r") as container:
-                # Priority 1: Decode Audio (The "Master Clock")
-                if container.streams.audio:
-                    audio_stream = container.streams.audio[0]
-                    duration = 0.0
-
-                    # Decode every frame to get exact sample count.
-                    # This is fast because we are not converting/resampling, just counting.
-                    for frame in container.decode(audio_stream):
-                        if frame.samples and frame.sample_rate:
-                            duration += float(frame.samples) / float(frame.sample_rate)
-
-                    return duration
-
-                # Priority 2: Video Stream Duration (Fallback if no audio)
-                elif container.streams.video:
-                    # If audio is missing, we fall back to video duration to keep the timeline moving
-                    video_stream = container.streams.video[0]
-                    if video_stream.duration and video_stream.time_base:
-                        return float(video_stream.duration * video_stream.time_base)
-
-                # Priority 3: Container Metadata (Least accurate, last resort)
-                elif container.duration:
-                    return float(container.duration) / 1_000_000.0
-
-        except Exception as e:
-            logger.error(f"[TwitchLFS] Failed to get chunk duration: {e}")
-            return 0.0
-        return 0.0

@@ -15,6 +15,7 @@ from live_transcript_worker.custom_types import (
     ProcessObject,
     StreamInfoObject,
 )
+from live_transcript_worker.helper import StreamHelper
 from live_transcript_worker.worker_abstract import AbstractWorker
 
 logger = logging.getLogger(__name__)
@@ -324,41 +325,6 @@ class DASHWorker(AbstractWorker):
             except Exception:
                 pass
 
-    def _get_chunk_duration(self, file_path: str) -> float:
-        """
-        Calculates the precise duration based on the Audio Stream.
-        """
-        try:
-            with av.open(file_path) as container:
-                # Priority 1: Decode Audio (The "Master Clock")
-                if container.streams.audio:
-                    audio_stream = container.streams.audio[0]
-                    duration = 0.0
-
-                    # Decode every frame to get exact sample count.
-                    # This is fast because we are not converting/resampling, just counting.
-                    for frame in container.decode(audio_stream):
-                        if frame.samples and frame.sample_rate:
-                            duration += float(frame.samples) / float(frame.sample_rate)
-
-                    return duration
-
-                # Priority 2: Video Stream Duration (Fallback if no audio)
-                elif container.streams.video:
-                    # If audio is missing, we fall back to video duration to keep the timeline moving
-                    video_stream = container.streams.video[0]
-                    if video_stream.duration and video_stream.time_base:
-                        return float(video_stream.duration * video_stream.time_base)
-
-                # Priority 3: Container Metadata (Least accurate, last resort)
-                elif container.duration:
-                    return float(container.duration) / 1_000_000.0
-
-        except Exception as e:
-            logger.error(f"[DASHWorker] Failed to get duration for {file_path}: {e}")
-            return 0.0
-        return 0.0
-
     def _is_complete_av(self, file_path: str) -> bool:
         """Checks if a file contains both video and audio streams."""
         try:
@@ -508,11 +474,10 @@ class DASHWorker(AbstractWorker):
                     # Even for audio-only (or partial video-only), we run it through merge_fragments.
                     # This standardizes the container to MPEG-TS for downstream processing.
                     if self._merge_fragments(files_for_seq, merged_ts_path):
-                        # Calculate accurate duration using av
-                        duration = self._get_chunk_duration(merged_ts_path)
-
                         with open(merged_ts_path, "rb") as f:
                             data = f.read()
+
+                        duration = StreamHelper.get_precise_duration(data)
 
                         if duration > 0:
                             buffer.extend(data)

@@ -104,6 +104,38 @@ class StreamHelper:
         return info
 
     @staticmethod
+    def get_precise_duration(data: bytes) -> float:
+        """
+        Calculates precise duration by decoding the audio stream and summing
+        samples / sample_rate for every frame. More accurate than get_duration,
+        which relies on container metadata that can drift over many segments.
+        """
+        try:
+            with io.BytesIO(data) as buffer, av.open(buffer, mode="r") as container:
+                # Priority 1: Decode audio — the master clock.
+                if container.streams.audio:
+                    audio_stream = container.streams.audio[0]
+                    duration = 0.0
+                    for frame in container.decode(audio_stream):
+                        if frame.samples and frame.sample_rate:
+                            duration += float(frame.samples) / float(frame.sample_rate)
+                    return duration
+
+                # Priority 2: Video stream metadata (no audio track).
+                if container.streams.video:
+                    video_stream = container.streams.video[0]
+                    if video_stream.duration and video_stream.time_base:
+                        return float(video_stream.duration * video_stream.time_base)
+
+                # Priority 3: Container metadata (least accurate, last resort).
+                if container.duration:
+                    return float(container.duration) / 1_000_000.0
+
+        except Exception as e:
+            logger.error(f"[get_precise_duration] Failed: {e}")
+        return 0.0
+
+    @staticmethod
     def get_duration(audio: bytes):
         try:
             with io.BytesIO(audio) as buffer, av.open(buffer, mode="r") as container:
