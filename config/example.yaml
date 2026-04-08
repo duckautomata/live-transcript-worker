@@ -54,6 +54,11 @@ streamers:
     # The URL determins what we download. If it's twitch, then video will be treated as audio.
     media_type: none
 
+    # Determins whether to start from the begining of a livestream, or from the current point.
+    # If true, the timestamps are perfect and nothing is missed, but can cause issues if the stream is too far ahead to catch up.
+    # If false, the timestamps will be approximated, and stuff can be missed. But does not have to catch up.
+    live_from_start: true
+
 # List of stream id's that should not be transcribed.
 # Useful for when you don't want to transcribe a 24/7 livestream
 # Leave as an empty string, or remove all together if you don't want to blacklist any streams

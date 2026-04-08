@@ -127,7 +127,7 @@ def test_monitor_loop(dash_worker, mocker):
 
     # helper mocks
     mocker.patch.object(dash_worker, "_merge_fragments", return_value=True)
-    mocker.patch.object(dash_worker, "_get_chunk_duration", return_value=6.0)
+    mocker.patch("live_transcript_worker.worker_dash.StreamHelper.get_precise_duration", return_value=6.0)
     mocker.patch.object(dash_worker, "_save_state")
     mocker.patch("builtins.open", mocker.mock_open(read_data=b"data"))
     mocker.patch("os.remove")
@@ -148,19 +148,6 @@ def test_monitor_loop(dash_worker, mocker):
 def test_merge_fragments(dash_worker, mocker):
     mocker.patch("subprocess.run")
     assert dash_worker._merge_fragments(["f1", "f2"], "out") is True
-
-
-def test_get_chunk_duration(dash_worker, mocker):
-    mock_av = mocker.patch("av.open")
-    container = MagicMock()
-    stream = MagicMock()
-    stream.duration = 100
-    stream.time_base = 0.1
-    container.streams.audio = []
-    container.streams.video = [stream]
-    mock_av.return_value.__enter__.return_value = container
-
-    assert dash_worker._get_chunk_duration("file") == 10.0
 
 
 def test_monitor_loop_stale_processing(dash_worker, mocker):
@@ -186,7 +173,7 @@ def test_monitor_loop_stale_processing(dash_worker, mocker):
 
     mocker.patch.object(dash_worker, "_is_complete_av", return_value=False)
     mocker.patch.object(dash_worker, "_merge_fragments", return_value=True)
-    mocker.patch.object(dash_worker, "_get_chunk_duration", return_value=6.0)
+    mocker.patch("live_transcript_worker.worker_dash.StreamHelper.get_precise_duration", return_value=6.0)
     mocker.patch.object(dash_worker, "_save_state")
     mocker.patch("builtins.open", mocker.mock_open(read_data=b"data"))
     mocker.patch("os.remove")

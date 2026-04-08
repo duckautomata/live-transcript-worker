@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import marshal
 import os
@@ -48,7 +49,7 @@ class Storage(metaclass=SingletonMeta):
         retry_strategy = Retry(
             total=3,
             backoff_factor=2,  # 2, 4, 8
-            status_forcelist=[400, 404, 500, 502, 503, 504],
+            status_forcelist=[400, 404, 502, 503, 504],  # 500 excluded: application errors are not retried
             allowed_methods=["GET", "POST"],
         )
         adapter = HTTPAdapter(
@@ -310,20 +311,30 @@ class Storage(metaclass=SingletonMeta):
             pass
 
     def _enqueue_media(self, key: str, stream_id: str, line_id: int, raw_bytes: bytes | None):
-        """Saves media to disk and enqueues it for upload"""
+        """Saves media to disk and enqueues it for upload.
+
+        Uses an atomic write (write to .tmp then rename) so that a process killed
+        mid-write never leaves a partial .bin file on disk. _process_old_queue_files
+        only picks up .bin files, so orphaned .tmp files are silently ignored on
+        the next startup.
+        """
 
         if not raw_bytes or len(raw_bytes) == 0:
             return
 
         queue_folder = self._get_queue_folder(key)
         media_path = os.path.join(queue_folder, f"media_stream_id={stream_id} line_id={line_id}.bin")
+        tmp_path = media_path + ".tmp"
         try:
-            with open(media_path, "wb") as f:
+            with open(tmp_path, "wb") as f:
                 f.write(raw_bytes)
+            os.replace(tmp_path, media_path)  # atomic on the same filesystem
             new_media = MediaUploadObject(key, stream_id, line_id, media_path)
             self.__upload_queue.put(new_media)
         except Exception as e:
             logger.error(f"[{key}][enqueue_media] Error saving media to disk: {e}")
+            with contextlib.suppress(OSError):
+                os.remove(tmp_path)
 
     def _clear_queue_folder(self, key):
         """Clears the queue folder for the given key. First deletes the folder then recreates it"""
@@ -367,7 +378,11 @@ class Storage(metaclass=SingletonMeta):
                                 f"[{item.key}][upload_media][{item.stream_id}][{item.id}] media upload response: {response.status_code} {response.text}"
                             )
                         storage_time = time.time() - start_time
-                        if response.status_code != 200:
+                        if response.status_code == 500:
+                            logger.error(
+                                f"[{item.key}][upload_media][{item.id}][{(storage_time):.3f}] Server error on media upload — dropping file and moving on. Response: {response.text}"
+                            )
+                        elif response.status_code != 200:
                             logger.warning(
                                 f"[{item.key}][upload_media][{item.id}][{(storage_time):.3f}] Relay did not accept media upload. Response: {response.status_code} {response.text}"
                             )
@@ -459,8 +474,8 @@ class Storage(metaclass=SingletonMeta):
         for attempt in range(1, max_attempts + 1):
             try:
                 response = self.session.post(url, **kwargs)
-                if response.status_code == 200 or response.status_code == 409 or attempt == max_attempts:
-                    return response  # success, server out of sync, or last attempt — let caller handle it
+                if response.status_code == 200 or response.status_code == 409 or response.status_code == 500 or attempt == max_attempts:
+                    return response  # success, out of sync, server error, or last attempt — let caller handle it
                 wait = 2**attempt
                 logger.warning(f"Request returned {response.status_code} (attempt {attempt}/{max_attempts}), retrying in {wait}s")
                 time.sleep(wait)
