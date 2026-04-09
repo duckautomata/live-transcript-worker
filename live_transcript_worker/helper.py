@@ -53,7 +53,7 @@ class StreamHelper:
                 # Note
                 # For YouTube, 'release_timestamp' is the epoch (s) for when the stream started
                 # For Twitch, 'timestamp' is the epoch (s) for when the stream started
-                info.is_live = metadata.get("is_live", False)
+                info.is_live = metadata.get("is_live", False) or metadata.get("live_status", "") == "is_live"
                 if info.is_live:
                     info.stream_id = metadata.get("id", "Unknown ID")
                     info.stream_title = StreamHelper.remove_date(metadata.get("title", "Unknown Title"))

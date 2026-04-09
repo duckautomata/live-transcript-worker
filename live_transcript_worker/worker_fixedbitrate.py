@@ -97,8 +97,6 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 # "10",
                 # "--fragment-retries",
                 # "10",
-                "--match-filter",
-                "is_live",
                 "-o",
                 "-",
                 info.url,

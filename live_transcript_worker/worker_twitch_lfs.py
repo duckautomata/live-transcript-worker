@@ -140,8 +140,6 @@ class TwitchLFSWorker(AbstractWorker):
                 "--quiet",
                 "--no-warnings",
                 "--live-from-start",
-                "--match-filter",
-                "is_live",
                 "-f",
                 fmt_selector,
                 "-o",

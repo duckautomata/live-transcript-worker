@@ -122,8 +122,6 @@ class MPEGBufferedWorker(AbstractWorker):
                 f"{self.ytdlp_path}",
                 "--quiet",
                 "--no-warnings",
-                "--match-filter",
-                "is_live",
                 "-o",
                 "-",
                 info.url,

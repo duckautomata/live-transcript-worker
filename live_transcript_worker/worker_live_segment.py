@@ -141,8 +141,6 @@ class LiveSegmentWorker(AbstractWorker):
                 self.ytdlp_path,
                 "--quiet",
                 "--no-warnings",
-                "--match-filter",
-                "is_live",
                 "-f",
                 fmt_selector,
                 "-o",

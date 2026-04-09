@@ -149,8 +149,6 @@ class DASHWorker(AbstractWorker):
                 "20",  # Retries for the initial connection/manifest
                 "--fragment-retries",
                 "20",  # Retries specifically for a fragment (e.g., 404 or timeout)
-                "--match-filter",
-                "is_live",
                 "-f",
                 fmt_selector,
                 "-o",
