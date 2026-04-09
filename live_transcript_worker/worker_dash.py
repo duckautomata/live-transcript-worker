@@ -141,6 +141,8 @@ class DASHWorker(AbstractWorker):
                 f"{self.ytdlp_path}",
                 "--live-from-start",
                 "--keep-fragments",
+                "--no-progress",
+                "--no-colors",
                 "--retries",
                 "infinite",
                 "--fragment-retries",
