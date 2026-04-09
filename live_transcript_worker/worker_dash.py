@@ -148,7 +148,7 @@ class DASHWorker(AbstractWorker):
                 "infinite",
                 # Retries for individual stream chunks (useful for transient CDN issues)
                 "--fragment-retries",
-                "infinite",
+                "10",
                 # Retries for YouTube parsing errors (e.g., "Video is no longer live")
                 "--extractor-retries",
                 "5",
@@ -157,7 +157,7 @@ class DASHWorker(AbstractWorker):
                 "30",
                 # Sleep durations before retrying with exponential backoff
                 "--retry-sleep",
-                "fragment:exp=1:20",
+                "fragment:exp=1:10",
                 "--retry-sleep",
                 "http:exp=1:60",
                 "--retry-sleep",
