@@ -139,24 +139,38 @@ class DASHWorker(AbstractWorker):
 
             cmd = [
                 f"{self.ytdlp_path}",
-                "--quiet",
-                "--no-warnings",
                 "--live-from-start",
                 "--keep-fragments",
-                "--concurrent-fragments",
-                "5",
                 "--retries",
-                "20",  # Retries for the initial connection/manifest
+                "infinite",
                 "--fragment-retries",
-                "20",  # Retries specifically for a fragment (e.g., 404 or timeout)
+                "infinite",
+                "--extractor-retries",
+                "infinite",
+                "--socket-timeout",
+                "30",
+                "--retry-sleep",
+                "fragment:exp=1:20",
+                "--retry-sleep",
+                "http:exp=1:60",
+                "--hls-prefer-native",
+                "--hls-use-mpegts",
                 "-f",
                 fmt_selector,
                 "-o",
                 f"{fragment_dir}/%(id)s.%(format_id)s",
                 info.url,
             ]
-            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            logger.debug(f"[{info.key}][DASHWorker] successfully created yt-dlp download process with mode {info.media_type}.")
+
+            log_path = os.path.join(os.path.dirname(fragment_dir), "ytdlp.log")
+            with open(log_path, "a") as log_file:
+                log_file.write(f"\n--- yt-dlp started at {time.strftime('%Y-%m-%d %H:%M:%S')} (stream: {info.stream_id}) ---\n")
+                log_file.flush()
+                process = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
+            # log_file is closed in the parent here; the subprocess inherits its own fd and keeps writing
+            logger.debug(
+                f"[{info.key}][DASHWorker] successfully created yt-dlp download process with mode {info.media_type}. Logging to {log_path}"
+            )
             return process
         except Exception as e:
             logger.error(f"[{info.key}][DASHWorker] failed to create process: {e}")
