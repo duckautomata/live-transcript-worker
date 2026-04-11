@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 
 import av
@@ -145,7 +146,7 @@ class DASHWorker(AbstractWorker):
                 "--no-colors",
                 # General HTTP connection retries
                 "--retries",
-                "infinite",
+                "20",
                 # Retries for individual stream chunks (useful for transient CDN issues)
                 "--fragment-retries",
                 "10",
@@ -191,11 +192,11 @@ class DASHWorker(AbstractWorker):
         Returns: (verification_backup_path, verification_target_filename)
         """
         # Logic: Find Frag1 with lowest format ID (Audio)
-        frag1_files = glob.glob(os.path.join(fragment_dir, "*Frag1*"))
-        frag1_candidates = []
-        for f in frag1_files:
-            if "Frag1" in f and not f.endswith(".part") and not f.endswith(".ytdl"):
-                frag1_candidates.append(f)
+        frag1_files = glob.glob(os.path.join(fragment_dir, "*Frag1"))
+        frag1_candidates = [
+            f for f in frag1_files
+            if re.search(r"Frag1$", f) and not f.endswith(".part") and not f.endswith(".ytdl") and not f.endswith(".bak")
+        ]
 
         if not frag1_candidates:
             logger.warning(f"[{info.key}][DASHWorker] No Frag1 found for verification. Skipping continuity check.")
@@ -247,7 +248,7 @@ class DASHWorker(AbstractWorker):
         verification_target_filename: str,
         last_processed_seq: int,
         current_stream_time: float,
-    ) -> tuple[int, float, subprocess.Popen]:
+    ) -> tuple[int, float, subprocess.Popen | None]:
         """
         Verifies if the stream continuity is preserved by checking the new fragment against the backup.
         If the stream continuity is not preserved, the process is restarted with a clean fragment directory.
@@ -261,6 +262,10 @@ class DASHWorker(AbstractWorker):
         new_frag_path = None
 
         while time.time() - start_wait < 90:
+            if self.stop_event.is_set():
+                logger.info(f"[{info.key}][DASHWorker] Stop event during verification, aborting.")
+                break
+
             if process.poll() is not None:
                 logger.error(f"[{info.key}][DASHWorker] Process died during verification.")
                 break
@@ -322,7 +327,7 @@ class DASHWorker(AbstractWorker):
         new_process = self.create_process(info, fragment_dir)
         if new_process is None:
             logger.error(f"[{info.key}][DASHWorker] Failed to restart process after sequence reset.")
-            return last_processed_seq, current_stream_time, process
+            return last_processed_seq, current_stream_time, None
 
         return last_processed_seq, current_stream_time, new_process
 
@@ -331,20 +336,13 @@ class DASHWorker(AbstractWorker):
             try:
                 shutil.rmtree(fragment_dir)
             except Exception as e:
-                logger.warning(f"[{info.key}][DASHWorker] failed to cleanup dir {fragment_dir}: {e}")
-
-        if info.stream_id and os.path.exists(fragment_dir):
-            # Additional cleanup for specific issue where stale files might linger
-            try:
-                files = glob.glob(os.path.join(fragment_dir, f"{info.stream_id}*"))
-                for f in files:
-                    try:
-                        if os.path.isfile(f):
-                            os.remove(f)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                logger.warning(f"[{info.key}][DASHWorker] Failed to cleanup dir {fragment_dir}: {e}")
+                # rmtree failed partially — mop up remaining stream files.
+                if info.stream_id:
+                    for f in glob.glob(os.path.join(fragment_dir, f"{info.stream_id}*")):
+                        with contextlib.suppress(Exception):
+                            if os.path.isfile(f):
+                                os.remove(f)
 
     def _is_complete_av(self, file_path: str) -> bool:
         """Checks if a file contains both video and audio streams."""
@@ -375,17 +373,25 @@ class DASHWorker(AbstractWorker):
         last_sequence: int,
         current_stream_time: float,
     ):
-        """Saves the current state to the state file."""
+        """Saves the current state atomically (write to temp file, then rename)."""
         try:
-            with open(state_path, "w") as f:
-                json.dump(
-                    {
-                        "stream_id": stream_id,
-                        "last_sequence": last_sequence,
-                        "current_stream_time": current_stream_time,
-                    },
-                    f,
-                )
+            dir_name = os.path.dirname(state_path)
+            fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w") as f:
+                    json.dump(
+                        {
+                            "stream_id": stream_id,
+                            "last_sequence": last_sequence,
+                            "current_stream_time": current_stream_time,
+                        },
+                        f,
+                    )
+                os.replace(tmp_path, state_path)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+                raise
         except Exception as e:
             logger.warning(f"[DASHWorker] Failed to save state: {e}")
 
@@ -414,6 +420,10 @@ class DASHWorker(AbstractWorker):
         current_processing_seq: int | None = None
         current_seq_start_time: float = 0.0
 
+        # Stall watchdog: detect when yt-dlp is alive but producing no new fragments
+        last_new_fragment_time: float = time.time()
+        stall_warning_threshold: float = 180.0  # seconds
+
         while not self.stop_event.is_set():
             if process.poll() is not None:
                 logger.info(f"[{info.key}][DASHWorker] yt-dlp process ended.")
@@ -441,15 +451,29 @@ class DASHWorker(AbstractWorker):
                 if seq not in pending_fragments:
                     pending_fragments[seq] = []
 
-                if os.path.getsize(f_path) == 0:
+                try:
+                    if os.path.getsize(f_path) == 0:
+                        continue
+                except OSError:
                     continue
 
                 if f_path not in pending_fragments[seq]:
                     pending_fragments[seq].append(f_path)
 
             if not pending_fragments:
+                # Stall watchdog
+                if time.time() - last_new_fragment_time > stall_warning_threshold:
+                    logger.warning(
+                        f"[{info.key}][DASHWorker] No new fragments in {stall_warning_threshold:.0f}s. "
+                        f"yt-dlp may be stalled (pid={process.pid})."
+                    )
+                    # Reset so we don't spam warnings every second
+                    last_new_fragment_time = time.time()
                 time.sleep(1)
                 continue
+
+            # New fragments found — reset stall watchdog
+            last_new_fragment_time = time.time()
 
             # Process sequences in order
             sequences = sorted(pending_fragments.keys())
@@ -494,7 +518,7 @@ class DASHWorker(AbstractWorker):
 
                     # Even for audio-only (or partial video-only), we run it through merge_fragments.
                     # This standardizes the container to MPEG-TS for downstream processing.
-                    if self._merge_fragments(files_for_seq, merged_ts_path):
+                    if self._merge_fragments(info, files_for_seq, merged_ts_path):
                         with open(merged_ts_path, "rb") as f:
                             data = f.read()
 
@@ -554,16 +578,30 @@ class DASHWorker(AbstractWorker):
             current_stream_time += buffer_duration
             self._save_state(state_file, info.stream_id, last_seq, current_stream_time)
 
-    def _merge_fragments(self, inputs: list[str], output: str) -> bool:
-        """Merges multiple input files into one MPEG-TS file using ffmpeg."""
+    def _merge_fragments(self, info: StreamInfoObject, inputs: list[str], output: str) -> bool:
+        """Merges fragment files into one MPEG-TS file using ffmpeg. Logs stderr on failure."""
         cmd = ["ffmpeg", "-y"]
         for inp in inputs:
             cmd.extend(["-i", inp])
-
         cmd.extend(["-c", "copy", "-f", "mpegts", output])
 
+        log_path = os.path.join(os.path.dirname(os.path.dirname(output)), "ffmpeg_dash.log")
+
         try:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True, timeout=30)
             return True
-        except subprocess.CalledProcessError:
+        except subprocess.TimeoutExpired:
+            logger.error(f"[{info.key}][DASHWorker] ffmpeg merge timed out for {output}")
+            return False
+        except subprocess.CalledProcessError as e:
+            try:
+                with open(log_path, "a") as lf:
+                    lf.write(f"\n--- ffmpeg merge failed at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+                    lf.write(f"cmd: {' '.join(cmd)}\n")
+                    if e.stderr:
+                        lf.write(e.stderr.decode(errors="replace"))
+                    lf.write("\n")
+            except Exception:
+                pass
+            logger.warning(f"[{info.key}][DASHWorker] ffmpeg merge failed for {output}")
             return False
