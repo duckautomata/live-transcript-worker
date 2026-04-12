@@ -194,7 +194,8 @@ class DASHWorker(AbstractWorker):
         # Logic: Find Frag1 with lowest format ID (Audio)
         frag1_files = glob.glob(os.path.join(fragment_dir, "*Frag1"))
         frag1_candidates = [
-            f for f in frag1_files
+            f
+            for f in frag1_files
             if re.search(r"Frag1$", f) and not f.endswith(".part") and not f.endswith(".ytdl") and not f.endswith(".bak")
         ]
 
