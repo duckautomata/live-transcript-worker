@@ -470,6 +470,17 @@ class DASHWorker(AbstractWorker):
                     )
                     # Reset so we don't spam warnings every second
                     last_new_fragment_time = time.time()
+
+                # Check if worker is too far behind live even while idle
+                gap = time.time() - current_stream_time
+                if gap > self.slow_worker_threshold_seconds:
+                    logger.warning(
+                        f"[{info.key}][DASHWorker] Worker is {gap / 60:.1f} minutes behind live "
+                        f"(threshold: {self.slow_worker_threshold} min). Switching to LiveSegmentWorker."
+                    )
+                    self.is_slow = True
+                    return
+
                 time.sleep(1)
                 continue
 
@@ -557,6 +568,16 @@ class DASHWorker(AbstractWorker):
                                 last_seq,
                                 current_stream_time,
                             )
+
+                            # Check if worker is too far behind live
+                            gap = time.time() - current_stream_time
+                            if gap > self.slow_worker_threshold_seconds:
+                                logger.warning(
+                                    f"[{info.key}][DASHWorker] Worker is {gap / 60:.1f} minutes behind live "
+                                    f"(threshold: {self.slow_worker_threshold} min). Switching to LiveSegmentWorker."
+                                )
+                                self.is_slow = True
+                                return
                     else:
                         logger.error(f"[{info.key}][DASHWorker] Failed to process fragments for seq {seq}")
                 else:

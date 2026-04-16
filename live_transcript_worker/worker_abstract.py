@@ -29,6 +29,10 @@ class AbstractWorker(ABC):
 
         self.live_latency_seconds = 1
 
+        self.slow_worker_threshold: int = Config.get_server_config().get("slow_worker_threshold", 10)
+        self.slow_worker_threshold_seconds: int = self.slow_worker_threshold * 60
+        self.is_slow: bool = False
+
     @abstractmethod
     def start(self, info: StreamInfoObject) -> None:
         """Starts working on the given url."""

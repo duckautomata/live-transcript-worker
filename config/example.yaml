@@ -24,6 +24,9 @@ server:
   # How long we will wait for a fragment to be ready before processing it with partial data.
   stale_time_threshold: 60
 
+  # If we are in live-from-start mode, and the worker is running this many minutes behind the live stream, then we will switch to a live-segment worker.
+  slow_worker_threshold: 10
+
 transcription:
   # list of models can be found here https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L12
   model: distil-large-v3.5
