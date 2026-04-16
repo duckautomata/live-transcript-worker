@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: test
-    environment: production
+    environment: develop
     permissions:
       contents: read
 
