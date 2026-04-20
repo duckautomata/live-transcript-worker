@@ -130,10 +130,10 @@ class TwitchLFSWorker(AbstractWorker):
 
             # Check if worker is too far behind live
             gap = time.time() - audio_start_time
-            if gap > self.slow_worker_threshold_seconds:
+            if gap > self.stale_lfs_gap_seconds:
                 logger.warning(
                     f"[{info.key}][TwitchLFSWorker] Worker is {gap / 60:.1f} minutes behind live "
-                    f"(threshold: {self.slow_worker_threshold} min). Switching to LiveSegmentWorker."
+                    f"(threshold: {self.stale_lfs_gap_seconds / 60:.1f} min). Switching to LiveSegmentWorker."
                 )
                 self.is_slow = True
                 break

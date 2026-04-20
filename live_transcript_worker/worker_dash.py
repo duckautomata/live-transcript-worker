@@ -423,7 +423,6 @@ class DASHWorker(AbstractWorker):
 
         # Stall watchdog: detect when yt-dlp is alive but producing no new fragments
         last_new_fragment_time: float = time.time()
-        stall_warning_threshold: float = 180.0  # seconds
 
         while not self.stop_event.is_set():
             if process.poll() is not None:
@@ -467,9 +466,9 @@ class DASHWorker(AbstractWorker):
                 # terminate it so the monitor loop exits cleanly. Don't switch to
                 # LiveSegmentWorker here — with no new fragments there's no live edge
                 # to catch up to, and switching would discard the current buffer.
-                if time.time() - last_new_fragment_time > stall_warning_threshold:
+                if time.time() - last_new_fragment_time > self.stale_ytdlp_seconds:
                     logger.warning(
-                        f"[{info.key}][DASHWorker] No new fragments in {stall_warning_threshold:.0f}s "
+                        f"[{info.key}][DASHWorker] No new fragments in {time.time() - last_new_fragment_time:.1f}s "
                         f"(pid={process.pid}). Terminating yt-dlp to finish cleanly."
                     )
                     process.terminate()
@@ -517,7 +516,7 @@ class DASHWorker(AbstractWorker):
                 # If the sequence is not ready but is "stale" (we have been waiting too long),
                 # force it to process with whatever partial data we have.
                 elapsed_time = time.time() - current_seq_start_time
-                if not is_ready and elapsed_time > self.stale_time_threshold:
+                if not is_ready and elapsed_time > self.stale_fragment_seconds:
                     logger.warning(
                         f"[{info.key}][DASHWorker] Sequence {seq} is incomplete (files: {len(files_for_seq)}) but stale (Elapsed: {elapsed_time:.1f}s). Processing with partial data."
                     )
@@ -569,10 +568,10 @@ class DASHWorker(AbstractWorker):
 
                             # Check if worker is too far behind live
                             gap = time.time() - current_stream_time
-                            if gap > self.slow_worker_threshold_seconds:
+                            if gap > self.stale_lfs_gap_seconds:
                                 logger.warning(
                                     f"[{info.key}][DASHWorker] Worker is {gap / 60:.1f} minutes behind live "
-                                    f"(threshold: {self.slow_worker_threshold} min). Switching to LiveSegmentWorker."
+                                    f"(threshold: {self.stale_lfs_gap_seconds / 60:.1f} min). Switching to LiveSegmentWorker."
                                 )
                                 self.is_slow = True
                                 return

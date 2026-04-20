@@ -58,8 +58,8 @@ class Worker:
     def _dash_state_path(self) -> str:
         return os.path.join(_PROJECT_ROOT, "tmp", self.key, "dash_state.json")
 
-    def _get_gap_minutes(self, info: StreamInfoObject, is_youtube: bool) -> float | None:
-        """Returns the gap in minutes between where the worker would resume and live.
+    def _get_gap_seconds(self, info: StreamInfoObject, is_youtube: bool) -> float | None:
+        """Returns the gap in seconds between where the worker would resume and live.
         Returns None if start_time is invalid."""
         try:
             start_time = float(info.start_time)
@@ -80,8 +80,12 @@ class Worker:
                 except Exception:
                     pass
 
-        gap_seconds = time.time() - resume_time
-        return gap_seconds / 60.0
+        return time.time() - resume_time
+
+    def _lfs_gap_seconds(self) -> int:
+        """Threshold (in seconds) at which a lagging worker falls back to LiveSegmentWorker."""
+        stale_cfg = Config.get_server_config().get("stale_threshold", {}) or {}
+        return stale_cfg.get("lfs_gap_seconds", 600)
 
     # ------------------------------------------------------------------
 
@@ -104,7 +108,7 @@ class Worker:
             self.live_segment_worker.start(info)
 
     def _start_twitch(self, info: StreamInfoObject):
-        slow_worker_threshold = Config.get_server_config().get("slow_worker_threshold", 10)
+        lfs_gap_seconds = self._lfs_gap_seconds()
 
         last_id = self._read_lfs_stream_id()
         if last_id == info.stream_id:
@@ -120,11 +124,11 @@ class Worker:
         self._write_lfs_stream_id(info.stream_id)
 
         # Check if the gap from start to live is too large
-        gap_minutes = self._get_gap_minutes(info, is_youtube=False)
-        if gap_minutes is not None and gap_minutes > slow_worker_threshold:
+        gap_seconds = self._get_gap_seconds(info, is_youtube=False)
+        if gap_seconds is not None and gap_seconds > lfs_gap_seconds:
             logger.warning(
-                f"[{self.key}][Worker] Twitch stream is {gap_minutes:.1f} minutes behind live "
-                f"(threshold: {slow_worker_threshold} min). Using LiveSegmentWorker instead of TwitchLFSWorker."
+                f"[{self.key}][Worker] Twitch stream is {gap_seconds / 60:.1f} minutes behind live "
+                f"(threshold: {lfs_gap_seconds / 60:.1f} min). Using LiveSegmentWorker instead of TwitchLFSWorker."
             )
             self.live_segment_worker.start(info)
             return
@@ -139,14 +143,14 @@ class Worker:
             self.live_segment_worker.start(info)
 
     def _start_youtube(self, info: StreamInfoObject):
-        slow_worker_threshold = Config.get_server_config().get("slow_worker_threshold", 10)
+        lfs_gap_seconds = self._lfs_gap_seconds()
 
         # Check if the gap from start (or resume point) to live is too large
-        gap_minutes = self._get_gap_minutes(info, is_youtube=True)
-        if gap_minutes is not None and gap_minutes > slow_worker_threshold:
+        gap_seconds = self._get_gap_seconds(info, is_youtube=True)
+        if gap_seconds is not None and gap_seconds > lfs_gap_seconds:
             logger.warning(
-                f"[{self.key}][Worker] YouTube stream is {gap_minutes:.1f} minutes behind live "
-                f"(threshold: {slow_worker_threshold} min). Using LiveSegmentWorker instead of DASHWorker."
+                f"[{self.key}][Worker] YouTube stream is {gap_seconds / 60:.1f} minutes behind live "
+                f"(threshold: {lfs_gap_seconds / 60:.1f} min). Using LiveSegmentWorker instead of DASHWorker."
             )
             self.live_segment_worker.start(info)
             return
