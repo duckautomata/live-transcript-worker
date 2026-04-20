@@ -130,10 +130,12 @@ class DASHWorker(AbstractWorker):
             # Output template to ensure filenames are predictable: id.format_id.FragmentNumber
 
             # Determine format selector based on media_type
-            if info.media_type == Media.VIDEO:
+            if info.media_type == Media.VIDEO:  # noqa: SIM108
                 # FORCE H.264 (avc) and AAC (mp4a) to ensure MPEG-TS compatibility.
                 # If we allow VP9, ffmpeg -c copy -f mpegts will drop the video track or create bin_data.
-                fmt_selector = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best"
+                # Comma (not +) downloads each format as a separate file so yt-dlp skips the Merger
+                # post-processor — we do our own per-fragment merge in _merge_fragments.
+                fmt_selector = "bestvideo[vcodec^=avc],bestaudio[acodec^=mp4a]"
             else:
                 # Audio only (Media.AUDIO or Media.NONE)
                 fmt_selector = "bestaudio/best"
@@ -462,24 +464,22 @@ class DASHWorker(AbstractWorker):
                     pending_fragments[seq].append(f_path)
 
             if not pending_fragments:
-                # Stall watchdog
+                # Stall watchdog: if yt-dlp has produced no new fragments for a while,
+                # assume the stream has ended (or yt-dlp is wedged in retries) and
+                # terminate it so the monitor loop exits cleanly. Don't switch to
+                # LiveSegmentWorker here — with no new fragments there's no live edge
+                # to catch up to, and switching would discard the current buffer.
                 if time.time() - last_new_fragment_time > stall_warning_threshold:
                     logger.warning(
-                        f"[{info.key}][DASHWorker] No new fragments in {stall_warning_threshold:.0f}s. "
-                        f"yt-dlp may be stalled (pid={process.pid})."
+                        f"[{info.key}][DASHWorker] No new fragments in {stall_warning_threshold:.0f}s "
+                        f"(pid={process.pid}). Terminating yt-dlp to finish cleanly."
                     )
-                    # Reset so we don't spam warnings every second
-                    last_new_fragment_time = time.time()
-
-                # Check if worker is too far behind live even while idle
-                gap = time.time() - current_stream_time
-                if gap > self.slow_worker_threshold_seconds:
-                    logger.warning(
-                        f"[{info.key}][DASHWorker] Worker is {gap / 60:.1f} minutes behind live "
-                        f"(threshold: {self.slow_worker_threshold} min). Switching to LiveSegmentWorker."
-                    )
-                    self.is_slow = True
-                    return
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                    break
 
                 time.sleep(1)
                 continue
