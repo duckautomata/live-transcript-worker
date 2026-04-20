@@ -133,12 +133,10 @@ class DASHWorker(AbstractWorker):
             if info.media_type == Media.VIDEO:  # noqa: SIM108
                 # FORCE H.264 (avc) and AAC (mp4a) to ensure MPEG-TS compatibility.
                 # If we allow VP9, ffmpeg -c copy -f mpegts will drop the video track or create bin_data.
-                # Comma (not +) downloads each format as a separate file so yt-dlp skips the Merger
-                # post-processor — we do our own per-fragment merge in _merge_fragments.
-                fmt_selector = "bestvideo[vcodec^=avc],bestaudio[acodec^=mp4a]"
+                fmt_selector = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best"
             else:
                 # Audio only (Media.AUDIO or Media.NONE)
-                fmt_selector = "bestaudio/best"
+                fmt_selector = "bestaudio[acodec^=mp4a]/ba/best"
 
             cmd = [
                 f"{self.ytdlp_path}",

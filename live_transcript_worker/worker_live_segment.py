@@ -136,7 +136,11 @@ class LiveSegmentWorker(AbstractWorker):
 
     def _create_ytdlp_process(self, info: StreamInfoObject) -> subprocess.Popen | None:
         try:
-            fmt_selector = "best" if info.media_type == Media.VIDEO else "ba/best"
+            # Force H.264 (avc) + AAC (mp4a) so ffmpeg -c copy -f mpegts produces a valid MPEG-TS.
+            if info.media_type == Media.VIDEO:
+                fmt_selector = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best"
+            else:
+                fmt_selector = "bestaudio[acodec^=mp4a]/ba/best"
             cmd = [
                 self.ytdlp_path,
                 "--quiet",
