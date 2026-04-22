@@ -112,6 +112,7 @@ class LiveSegmentWorker(AbstractWorker):
                         audio_start_time=audio_start_time,
                         key=info.key,
                         media_type=info.media_type,
+                        vod_accurate=False,
                     )
                     logger.debug(f"[{info.key}][LiveSegmentWorker] Queuing segment {next_seq}. Duration: {duration:.3f}s")
                     self.queue.put(process_obj)
@@ -136,11 +137,16 @@ class LiveSegmentWorker(AbstractWorker):
 
     def _create_ytdlp_process(self, info: StreamInfoObject) -> subprocess.Popen | None:
         try:
-            fmt_selector = "best" if info.media_type == Media.VIDEO else "ba/best"
+            # Force H.264 (avc) + AAC (mp4a) so ffmpeg -c copy -f mpegts produces a valid MPEG-TS.
+            if info.media_type == Media.VIDEO:
+                fmt_selector = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best"
+            else:
+                fmt_selector = "bestaudio[acodec^=mp4a]/ba/best"
             cmd = [
                 self.ytdlp_path,
                 "--quiet",
                 "--no-warnings",
+                *StreamHelper.ytdlp_auth_args(),
                 "-f",
                 fmt_selector,
                 "-o",

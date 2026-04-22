@@ -9,6 +9,7 @@ from live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
 @pytest.fixture
 def fixed_worker(mocker):
     mocker.patch("live_transcript_worker.worker_abstract.Config")
+    mocker.patch("live_transcript_worker.helper.Config")
     queue = MagicMock()
     stop_event = MagicMock()
     worker = MPEGFixedBitrateWorker("key", queue, stop_event)

@@ -151,7 +151,6 @@ def test_add_new_line(storage, mocker, tmp_path):
     updated_data = mock_dict_to_file.call_args[0][1]
     assert len(updated_data["transcript"]) == 2
     assert updated_data["transcript"][-1]["id"] == 1
-    assert updated_data["transcript"][-1]["mediaAvailable"] is False
 
     # Verify file saved
     media_file = queue_folder / "media_stream_id=a12 line_id=1.bin"

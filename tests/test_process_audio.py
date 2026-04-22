@@ -78,7 +78,7 @@ def test_process_audio_full_flow(process_audio_instance, mock_storage_process, m
         return_value=([(0.0, "hello"), (1.0, "world")], 5.0),
     )
 
-    item = ProcessObject(raw=b"data", audio_start_time=100.0, key="key", media_type=Media.AUDIO)
+    item = ProcessObject(raw=b"data", audio_start_time=100.0, key="key", media_type=Media.AUDIO, vod_accurate=False)
 
     process_audio_instance.process_audio(item)
 
@@ -97,7 +97,7 @@ def test_process_audio_full_flow(process_audio_instance, mock_storage_process, m
 def test_process_audio_no_transcription(process_audio_instance, mock_storage_process, mocker):
     mocker.patch.object(process_audio_instance, "transcribe", return_value=None)
 
-    item = ProcessObject(raw=b"data", audio_start_time=100.0, key="key", media_type=Media.AUDIO)
+    item = ProcessObject(raw=b"data", audio_start_time=100.0, key="key", media_type=Media.AUDIO, vod_accurate=False)
 
     process_audio_instance.process_audio(item)
 

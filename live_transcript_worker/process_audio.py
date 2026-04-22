@@ -98,6 +98,8 @@ class ProcessAudio:
             "id": -1,  # we let storage take care of setting the line id
             "timestamp": floor(item.audio_start_time),
             "segments": new_segments,
+            "mediaAvailable": False,
+            "vodAccurate": item.vod_accurate,
         }
 
         size = 0

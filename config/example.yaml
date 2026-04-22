@@ -21,8 +21,27 @@ server:
   # How long each line will be in seconds
   buffer_size_seconds: 6
 
-  # How long we will wait for a fragment to be ready before processing it with partial data.
-  stale_time_threshold: 60
+  # Cookie file passed to yt-dlp (used to bypass bot restrictions on some sites).
+  # The file must exist at the project root (same directory as bin/, config/, etc.).
+  cookies:
+    # If true, yt-dlp will be invoked with --cookies <filename>.
+    enabled: false
+    # Filename of the cookies file, relative to the project root.
+    filename: cookies.txt
+
+  # Stale-detection thresholds. All values are in seconds.
+  stale_threshold:
+    # How long we wait for a DASH fragment to become ready (both video+audio tracks present)
+    # before giving up and processing it with partial data.
+    fragment_seconds: 60
+
+    # In live-from-start mode, if the worker falls this far behind live, we switch to
+    # LiveSegmentWorker to catch up at the live edge.
+    lfs_gap_seconds: 600
+
+    # If yt-dlp produces no new fragments for this long, we assume the stream has ended
+    # (or yt-dlp is wedged) and terminate it so the worker can exit cleanly.
+    ytdlp_seconds: 180
 
 transcription:
   # list of models can be found here https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L12

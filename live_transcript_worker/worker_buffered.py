@@ -54,6 +54,7 @@ class MPEGBufferedWorker(AbstractWorker):
                     audio_start_time=audio_start_time,
                     key=info.key,
                     media_type=info.media_type,
+                    vod_accurate=False,
                 )
                 logger.debug(f"[{info.key}][MPEGBufferedWorker] Adding audio to queue.")
                 self.queue.put(process_obj)
@@ -69,6 +70,7 @@ class MPEGBufferedWorker(AbstractWorker):
                     audio_start_time=audio_start_time,
                     key=info.key,
                     media_type=info.media_type,
+                    vod_accurate=False,
                 )
                 logger.debug(f"[{info.key}][MPEGBufferedWorker] Adding final audio to queue.")
                 self.queue.put(process_obj)
@@ -122,6 +124,7 @@ class MPEGBufferedWorker(AbstractWorker):
                 f"{self.ytdlp_path}",
                 "--quiet",
                 "--no-warnings",
+                *StreamHelper.ytdlp_auth_args(),
                 "-o",
                 "-",
                 info.url,

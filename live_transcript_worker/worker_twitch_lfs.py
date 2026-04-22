@@ -109,6 +109,7 @@ class TwitchLFSWorker(AbstractWorker):
                         audio_start_time=audio_start_time,
                         key=info.key,
                         media_type=info.media_type,
+                        vod_accurate=True,
                     )
                     logger.debug(f"[{info.key}][TwitchLFSWorker] Queuing segment {next_seq}. Duration: {duration:.3f}s")
                     self.queue.put(process_obj)
@@ -128,6 +129,16 @@ class TwitchLFSWorker(AbstractWorker):
                     break
                 time.sleep(0.5)
 
+            # Check if worker is too far behind live
+            gap = time.time() - audio_start_time
+            if gap > self.stale_lfs_gap_seconds:
+                logger.warning(
+                    f"[{info.key}][TwitchLFSWorker] Worker is {gap / 60:.1f} minutes behind live "
+                    f"(threshold: {self.stale_lfs_gap_seconds / 60:.1f} min). Switching to LiveSegmentWorker."
+                )
+                self.is_slow = True
+                break
+
     # ------------------------------------------------------------------
     # Process creation
     # ------------------------------------------------------------------
@@ -140,6 +151,7 @@ class TwitchLFSWorker(AbstractWorker):
                 "--quiet",
                 "--no-warnings",
                 "--live-from-start",
+                *StreamHelper.ytdlp_auth_args(),
                 "-f",
                 fmt_selector,
                 "-o",

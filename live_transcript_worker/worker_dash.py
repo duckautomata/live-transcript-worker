@@ -130,13 +130,13 @@ class DASHWorker(AbstractWorker):
             # Output template to ensure filenames are predictable: id.format_id.FragmentNumber
 
             # Determine format selector based on media_type
-            if info.media_type == Media.VIDEO:
+            if info.media_type == Media.VIDEO:  # noqa: SIM108
                 # FORCE H.264 (avc) and AAC (mp4a) to ensure MPEG-TS compatibility.
                 # If we allow VP9, ffmpeg -c copy -f mpegts will drop the video track or create bin_data.
                 fmt_selector = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best"
             else:
                 # Audio only (Media.AUDIO or Media.NONE)
-                fmt_selector = "bestaudio/best"
+                fmt_selector = "bestaudio[acodec^=mp4a]/ba/best"
 
             cmd = [
                 f"{self.ytdlp_path}",
@@ -144,6 +144,7 @@ class DASHWorker(AbstractWorker):
                 "--keep-fragments",
                 "--no-progress",
                 "--no-colors",
+                *StreamHelper.ytdlp_auth_args(),
                 # General HTTP connection retries
                 "--retries",
                 "20",
@@ -423,7 +424,6 @@ class DASHWorker(AbstractWorker):
 
         # Stall watchdog: detect when yt-dlp is alive but producing no new fragments
         last_new_fragment_time: float = time.time()
-        stall_warning_threshold: float = 180.0  # seconds
 
         while not self.stop_event.is_set():
             if process.poll() is not None:
@@ -462,14 +462,23 @@ class DASHWorker(AbstractWorker):
                     pending_fragments[seq].append(f_path)
 
             if not pending_fragments:
-                # Stall watchdog
-                if time.time() - last_new_fragment_time > stall_warning_threshold:
+                # Stall watchdog: if yt-dlp has produced no new fragments for a while,
+                # assume the stream has ended (or yt-dlp is wedged in retries) and
+                # terminate it so the monitor loop exits cleanly. Don't switch to
+                # LiveSegmentWorker here — with no new fragments there's no live edge
+                # to catch up to, and switching would discard the current buffer.
+                if time.time() - last_new_fragment_time > self.stale_ytdlp_seconds:
                     logger.warning(
-                        f"[{info.key}][DASHWorker] No new fragments in {stall_warning_threshold:.0f}s. "
-                        f"yt-dlp may be stalled (pid={process.pid})."
+                        f"[{info.key}][DASHWorker] No new fragments in {time.time() - last_new_fragment_time:.1f}s "
+                        f"(pid={process.pid}). Terminating yt-dlp to finish cleanly."
                     )
-                    # Reset so we don't spam warnings every second
-                    last_new_fragment_time = time.time()
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                    break
+
                 time.sleep(1)
                 continue
 
@@ -508,7 +517,7 @@ class DASHWorker(AbstractWorker):
                 # If the sequence is not ready but is "stale" (we have been waiting too long),
                 # force it to process with whatever partial data we have.
                 elapsed_time = time.time() - current_seq_start_time
-                if not is_ready and elapsed_time > self.stale_time_threshold:
+                if not is_ready and elapsed_time > self.stale_fragment_seconds:
                     logger.warning(
                         f"[{info.key}][DASHWorker] Sequence {seq} is incomplete (files: {len(files_for_seq)}) but stale (Elapsed: {elapsed_time:.1f}s). Processing with partial data."
                     )
@@ -542,6 +551,7 @@ class DASHWorker(AbstractWorker):
                                 audio_start_time=current_stream_time,
                                 key=info.key,
                                 media_type=info.media_type,
+                                vod_accurate=True,
                             )
                             logger.debug(f"[{info.key}][DASHWorker] Adding chunk seq {seq} to queue. Duration: {buffer_duration:.3f}s")
                             self.queue.put(process_obj)
@@ -557,6 +567,16 @@ class DASHWorker(AbstractWorker):
                                 last_seq,
                                 current_stream_time,
                             )
+
+                            # Check if worker is too far behind live
+                            gap = time.time() - current_stream_time
+                            if gap > self.stale_lfs_gap_seconds:
+                                logger.warning(
+                                    f"[{info.key}][DASHWorker] Worker is {gap / 60:.1f} minutes behind live "
+                                    f"(threshold: {self.stale_lfs_gap_seconds / 60:.1f} min). Switching to LiveSegmentWorker."
+                                )
+                                self.is_slow = True
+                                return
                     else:
                         logger.error(f"[{info.key}][DASHWorker] Failed to process fragments for seq {seq}")
                 else:
@@ -573,6 +593,7 @@ class DASHWorker(AbstractWorker):
                 audio_start_time=current_stream_time,
                 key=info.key,
                 media_type=info.media_type,
+                vod_accurate=True,
             )
             self.queue.put(process_obj)
 

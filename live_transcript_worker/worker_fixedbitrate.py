@@ -3,6 +3,7 @@ import subprocess
 import time
 
 from live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
+from live_transcript_worker.helper import StreamHelper
 from live_transcript_worker.worker_abstract import AbstractWorker
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 audio_start_time=audio_start_time,
                 key=info.key,
                 media_type=info.media_type,
+                vod_accurate=False,
             )
             logger.debug(f"[{info.key}][MPEGFixedBitrateWorker] Adding audio to queue.")
             self.queue.put(process_obj)
@@ -76,6 +78,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 audio_start_time=audio_start_time,
                 key=info.key,
                 media_type=info.media_type,
+                vod_accurate=False,
             )
             logger.debug(f"[{info.key}][MPEGFixedBitrateWorker] Adding final audio to queue.")
             self.queue.put(process_obj)
@@ -93,6 +96,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 "ba",
                 "--quiet",
                 "--no-warnings",
+                *StreamHelper.ytdlp_auth_args(),
                 # "--retries",
                 # "10",
                 # "--fragment-retries",

@@ -1,7 +1,18 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from live_transcript_worker.custom_types import Media
 from live_transcript_worker.helper import StreamHelper
+
+
+@pytest.fixture(autouse=True)
+def _stub_config(mocker):
+    """Stub Config so ytdlp_auth_args() doesn't require a real config.yaml."""
+    mock_conf = mocker.patch("live_transcript_worker.helper.Config")
+    mock_conf.get_server_config.return_value = {}
+    mock_conf.get_streamer_config.return_value = {}
+    return mock_conf
 
 
 def test_remove_date():
@@ -123,3 +134,22 @@ def test_get_media_type(mocker):
 
     # Twitch does not override
     assert StreamHelper.get_media_type("http://twitch.tv", "key") == Media.VIDEO
+
+
+def test_get_stream_stats_none_start_time(mocker):
+    mock_popen = mocker.patch("subprocess.Popen")
+    process_mock = MagicMock()
+    # release_timestamp is None, timestamp is None
+    process_mock.communicate.return_value = (
+        '{"is_live": true, "id": "123", "title": "Test Title", "release_timestamp": null, "timestamp": null}',
+        "",
+    )
+    process_mock.returncode = 0
+    mock_popen.return_value = process_mock
+
+    info = StreamHelper.get_stream_stats("http://test.com")
+
+    assert info.is_live is True
+    assert info.start_time != "None"
+    # Should be a numeric string (fallback to time.time())
+    assert float(info.start_time) > 0
