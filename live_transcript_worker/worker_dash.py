@@ -144,6 +144,7 @@ class DASHWorker(AbstractWorker):
                 "--keep-fragments",
                 "--no-progress",
                 "--no-colors",
+                *StreamHelper.ytdlp_auth_args(),
                 # General HTTP connection retries
                 "--retries",
                 "20",

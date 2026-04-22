@@ -3,6 +3,7 @@ import subprocess
 import time
 
 from live_transcript_worker.custom_types import ProcessObject, StreamInfoObject
+from live_transcript_worker.helper import StreamHelper
 from live_transcript_worker.worker_abstract import AbstractWorker
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 "ba",
                 "--quiet",
                 "--no-warnings",
+                *StreamHelper.ytdlp_auth_args(),
                 # "--retries",
                 # "10",
                 # "--fragment-retries",

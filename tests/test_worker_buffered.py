@@ -10,6 +10,7 @@ from live_transcript_worker.worker_buffered import MPEGBufferedWorker
 @pytest.fixture
 def buffered_worker(mocker):
     mocker.patch("live_transcript_worker.worker_abstract.Config")
+    mocker.patch("live_transcript_worker.helper.Config")
     queue = MagicMock()
     stop_event = MagicMock()
 

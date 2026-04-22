@@ -124,6 +124,7 @@ class MPEGBufferedWorker(AbstractWorker):
                 f"{self.ytdlp_path}",
                 "--quiet",
                 "--no-warnings",
+                *StreamHelper.ytdlp_auth_args(),
                 "-o",
                 "-",
                 info.url,

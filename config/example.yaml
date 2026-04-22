@@ -21,6 +21,14 @@ server:
   # How long each line will be in seconds
   buffer_size_seconds: 6
 
+  # Cookie file passed to yt-dlp (used to bypass bot restrictions on some sites).
+  # The file must exist at the project root (same directory as bin/, config/, etc.).
+  cookies:
+    # If true, yt-dlp will be invoked with --cookies <filename>.
+    enabled: false
+    # Filename of the cookies file, relative to the project root.
+    filename: cookies.txt
+
   # Stale-detection thresholds. All values are in seconds.
   stale_threshold:
     # How long we wait for a DASH fragment to become ready (both video+audio tracks present)

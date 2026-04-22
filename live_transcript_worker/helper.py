@@ -16,6 +16,26 @@ logger = logging.getLogger(__name__)
 
 class StreamHelper:
     @staticmethod
+    def ytdlp_auth_args() -> list[str]:
+        """
+        Returns common yt-dlp args for authentication and content filtering:
+        - --cookies <file> when `server.cookies.enabled` is true (bypasses bot restrictions)
+        - --match-filter to skip members-only content (YouTube subscriber_only)
+        """
+        args = ["--match-filter", "availability!=subscriber_only"]
+
+        cookies_cfg: dict = Config.get_server_config().get("cookies", {}) or {}
+        if cookies_cfg.get("enabled", False):
+            filename = cookies_cfg.get("filename", "cookies.txt")
+            project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cookies_path = os.path.join(project_root_dir, filename)
+            if os.path.isfile(cookies_path):
+                args.extend(["--cookies", cookies_path])
+            else:
+                logger.warning(f"[ytdlp_auth_args] Cookies enabled but file not found at '{cookies_path}'.")
+        return args
+
+    @staticmethod
     def remove_date(title: str) -> str:
         """
         Given a title, this will remove the date and return the result.
@@ -24,16 +44,41 @@ class StreamHelper:
         return re.sub(pattern, "", title).strip()
 
     @staticmethod
-    def get_stream_stats(url: str) -> StreamInfoObject:
+    def _dump_stream_stats_debug(key: str, url: str, returncode: int | None, stdout: str, stderr: str) -> None:
+        """Writes the raw yt-dlp metadata response (or error output) to tmp/{key}/stream_stats.log
+        for debugging. Overwritten on each call so each key has its own latest response."""
+        if not key:
+            return
+        try:
+            project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            debug_dir = os.path.join(project_root_dir, "tmp", key)
+            os.makedirs(debug_dir, exist_ok=True)
+            debug_path = os.path.join(debug_dir, "stream_stats.log")
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(f"--- yt-dlp -j response at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+                f.write(f"url: {url}\n")
+                f.write(f"returncode: {returncode}\n")
+                f.write("--- stdout ---\n")
+                f.write(stdout or "")
+                f.write("\n--- stderr ---\n")
+                f.write(stderr or "")
+        except Exception as e:
+            logger.warning(f"[stream_stats] Failed to write debug file: {e}")
+
+    @staticmethod
+    def get_stream_stats(url: str, key: str = "") -> StreamInfoObject:
         """grabs the stats of a stream
 
         Note: yt-dlp -j is high cpu usage for whatever reason. This should only be called very infrequently.
         """
         project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
-        cmd = [ytdlp_path, "-j", url]  # -j is alias for --dump-json
+        cmd = [ytdlp_path, "-j", *StreamHelper.ytdlp_auth_args(), url]  # -j is alias for --dump-json
         process = None
         info = StreamInfoObject(url=url)
+        stdout = ""
+        stderr = ""
+        returncode: int | None = None
         try:
             process = subprocess.Popen(
                 cmd,
@@ -43,6 +88,7 @@ class StreamHelper:
                 encoding="utf-8",
             )
             stdout, stderr = process.communicate(timeout=30)
+            returncode = process.returncode
 
             if process.returncode != 0:
                 raise Exception(f"yt-dlp metadata fetch failed (code {process.returncode}): {stderr}")
@@ -57,15 +103,20 @@ class StreamHelper:
                 if info.is_live:
                     info.stream_id = metadata.get("id", "Unknown ID")
                     info.stream_title = StreamHelper.remove_date(metadata.get("title", "Unknown Title"))
-                    start_time = metadata.get("release_timestamp", 0)
+                    start_time = metadata.get("release_timestamp")
                     if "twitch.tv" in url.lower():
                         info.stream_title = (
                             f"{metadata.get('display_id', 'Unknown Channel')} - {metadata.get('description', 'Unknown Title')}"
                         )
-                        start_time = metadata.get("timestamp", 0)
-                    if start_time == 0:
-                        start_time = metadata.get("timestamp", time.time())
-                        logger.warning("[stream_stats] start_time is still at 0")
+                        start_time = metadata.get("timestamp")
+
+                    if start_time is None or start_time == 0:
+                        start_time = metadata.get("timestamp")
+
+                    if start_time is None or start_time == 0:
+                        start_time = time.time()
+                        logger.warning(f"[stream_stats] Could not find start_time for {url}. Falling back to current time.")
+
                     info.start_time = str(start_time)
 
             except json.JSONDecodeError:
@@ -83,19 +134,20 @@ class StreamHelper:
             # this is usually when it is a member stream, or the stream is not live yet.
             pass
 
+        StreamHelper._dump_stream_stats_debug(key, url, returncode, stdout, stderr)
         return info
 
     @staticmethod
-    def get_stream_stats_until_valid_start(url: str, n: int) -> StreamInfoObject:
-        info: StreamInfoObject = StreamHelper.get_stream_stats(url)
+    def get_stream_stats_until_valid_start(url: str, n: int, key: str = "") -> StreamInfoObject:
+        info: StreamInfoObject = StreamHelper.get_stream_stats(url, key)
 
         if not info.is_live:
             return info
 
-        while (info.start_time == "None" or info.start_time == "0" or info.start_time is None) and n > 0:
+        while (info.start_time in ["None", "0", "0.0"] or info.start_time is None) and n > 0:
             logger.warning(f"[stream_stats_valid] start_time is not valid. type: {type(info.start_time)}, value: {info.start_time}, n: {n}")
             time.sleep(5)
-            info = StreamHelper.get_stream_stats(url)
+            info = StreamHelper.get_stream_stats(url, key)
             n -= 1
 
             if not info.is_live:
