@@ -550,6 +550,7 @@ class DASHWorker(AbstractWorker):
                                 audio_start_time=current_stream_time,
                                 key=info.key,
                                 media_type=info.media_type,
+                                vod_accurate=True,
                             )
                             logger.debug(f"[{info.key}][DASHWorker] Adding chunk seq {seq} to queue. Duration: {buffer_duration:.3f}s")
                             self.queue.put(process_obj)
@@ -591,6 +592,7 @@ class DASHWorker(AbstractWorker):
                 audio_start_time=current_stream_time,
                 key=info.key,
                 media_type=info.media_type,
+                vod_accurate=True,
             )
             self.queue.put(process_obj)
 

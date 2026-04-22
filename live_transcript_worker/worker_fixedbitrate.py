@@ -63,6 +63,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 audio_start_time=audio_start_time,
                 key=info.key,
                 media_type=info.media_type,
+                vod_accurate=False,
             )
             logger.debug(f"[{info.key}][MPEGFixedBitrateWorker] Adding audio to queue.")
             self.queue.put(process_obj)
@@ -76,6 +77,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 audio_start_time=audio_start_time,
                 key=info.key,
                 media_type=info.media_type,
+                vod_accurate=False,
             )
             logger.debug(f"[{info.key}][MPEGFixedBitrateWorker] Adding final audio to queue.")
             self.queue.put(process_obj)

@@ -194,7 +194,6 @@ class Storage(metaclass=SingletonMeta):
         if len(transcript) > 0:
             last_id = transcript[-1]["id"]
         line["id"] = last_id + 1
-        line["mediaAvailable"] = False
         transcript.append(line)
         data["transcript"] = transcript
         self._dict_to_file(key, data)

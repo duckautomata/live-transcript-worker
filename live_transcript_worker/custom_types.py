@@ -11,12 +11,14 @@ class ProcessObject:
     audio_start_time: float
     key: str
     media_type: str
+    vod_accurate: bool
 
-    def __init__(self, raw: bytes | None, audio_start_time: float, key: str, media_type: str):
+    def __init__(self, raw: bytes | None, audio_start_time: float, key: str, media_type: str, vod_accurate: bool):
         self.raw = raw
         self.audio_start_time = audio_start_time
         self.key = key
         self.media_type = media_type
+        self.vod_accurate = vod_accurate
 
 
 class MediaUploadObject:

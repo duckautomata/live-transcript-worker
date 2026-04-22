@@ -64,6 +64,7 @@ def test_real_whisper_transcription(mocker, audio_filename, min_chars, max_chars
         audio_start_time=100.0,
         key="test_integration_key",
         media_type=Media.AUDIO,
+        vod_accurate=False,
     )
 
     # 6. Run process_audio

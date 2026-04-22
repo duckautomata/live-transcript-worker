@@ -109,6 +109,7 @@ class TwitchLFSWorker(AbstractWorker):
                         audio_start_time=audio_start_time,
                         key=info.key,
                         media_type=info.media_type,
+                        vod_accurate=True,
                     )
                     logger.debug(f"[{info.key}][TwitchLFSWorker] Queuing segment {next_seq}. Duration: {duration:.3f}s")
                     self.queue.put(process_obj)

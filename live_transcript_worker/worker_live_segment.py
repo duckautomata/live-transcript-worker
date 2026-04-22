@@ -112,6 +112,7 @@ class LiveSegmentWorker(AbstractWorker):
                         audio_start_time=audio_start_time,
                         key=info.key,
                         media_type=info.media_type,
+                        vod_accurate=False,
                     )
                     logger.debug(f"[{info.key}][LiveSegmentWorker] Queuing segment {next_seq}. Duration: {duration:.3f}s")
                     self.queue.put(process_obj)
