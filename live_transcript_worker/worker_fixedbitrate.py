@@ -96,7 +96,7 @@ class MPEGFixedBitrateWorker(AbstractWorker):
                 "ba",
                 "--quiet",
                 "--no-warnings",
-                *StreamHelper.ytdlp_auth_args(),
+                *StreamHelper.ytdlp_auth_args(info.url),
                 # "--retries",
                 # "10",
                 # "--fragment-retries",

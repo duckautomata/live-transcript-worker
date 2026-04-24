@@ -151,7 +151,7 @@ class TwitchLFSWorker(AbstractWorker):
                 "--quiet",
                 "--no-warnings",
                 "--live-from-start",
-                *StreamHelper.ytdlp_auth_args(),
+                *StreamHelper.ytdlp_auth_args(info.url),
                 "-f",
                 fmt_selector,
                 "-o",

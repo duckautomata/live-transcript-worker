@@ -16,13 +16,19 @@ logger = logging.getLogger(__name__)
 
 class StreamHelper:
     @staticmethod
-    def ytdlp_auth_args() -> list[str]:
+    def ytdlp_auth_args(url: str) -> list[str]:
         """
-        Returns common yt-dlp args for authentication and content filtering:
+        Returns YouTube-only yt-dlp args for authentication and content filtering:
         - --cookies <file> when `server.cookies.enabled` is true (bypasses bot restrictions)
         - --match-filter to skip members-only content (YouTube subscriber_only)
+
+        Returns an empty list for non-YouTube URLs (e.g. Twitch), since Twitch doesn't
+        expose an `availability` field and doesn't need the cookies.
         """
-        args = ["--match-filter", "availability!=subscriber_only"]
+        if "twitch.tv" in url.lower():
+            return []
+
+        args = ["--match-filter", "availability!=?subscriber_only"]
 
         cookies_cfg: dict = Config.get_server_config().get("cookies", {}) or {}
         if cookies_cfg.get("enabled", False):
@@ -73,7 +79,7 @@ class StreamHelper:
         """
         project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
-        cmd = [ytdlp_path, "-j", *StreamHelper.ytdlp_auth_args(), url]  # -j is alias for --dump-json
+        cmd = [ytdlp_path, "-j", *StreamHelper.ytdlp_auth_args(url), url]  # -j is alias for --dump-json
         process = None
         info = StreamInfoObject(url=url)
         stdout = ""
