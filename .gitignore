@@ -1,5 +1,6 @@
 tmp/
 bin/
+yt-dlp-plugins/
 models/
 cookies.txt
 

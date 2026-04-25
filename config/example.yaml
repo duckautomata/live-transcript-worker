@@ -29,6 +29,20 @@ server:
     # Filename of the cookies file, relative to the project root.
     filename: cookies.txt
 
+  # YouTube PO Token provider (bgutil-ytdlp-pot-provider, HTTP mode).
+  # Required when YouTube enrolls the host IP in the GVS PO-Token experiment,
+  # which blocks --live-from-start DASH extraction without a token. The plugin
+  # is installed in the Docker image; the sidecar is defined in docker-compose.yml.
+  pot_provider:
+    # If true, yt-dlp is invoked with --plugin-dirs and the bgutil HTTP base_url.
+    enabled: true
+    # URL of the bgutil-provider sidecar. In docker-compose this resolves to the
+    # service name on the internal network.
+    url: http://bgutil-provider:4416
+    # Directory containing the extracted plugin (yt_dlp_plugins/...). Set in the
+    # Dockerfile; only change this if running outside the standard image.
+    plugin_dir: /app/yt-dlp-plugins
+
   # Stale-detection thresholds. All values are in seconds.
   stale_threshold:
     # How long we wait for a DASH fragment to become ready (both video+audio tracks present)

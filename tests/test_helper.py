@@ -23,6 +23,45 @@ def test_remove_date():
     assert StreamHelper.remove_date("Clean Title") == "Clean Title"
 
 
+def test_ytdlp_auth_args_twitch_returns_empty(_stub_config):
+    assert StreamHelper.ytdlp_auth_args("https://www.twitch.tv/foo") == []
+
+
+def test_ytdlp_auth_args_youtube_default(_stub_config):
+    args = StreamHelper.ytdlp_auth_args("https://www.youtube.com/live/abc")
+    assert "--match-filter" in args
+    assert "--cookies" not in args
+    assert "--plugin-dirs" not in args
+    assert "--extractor-args" not in args
+
+
+def test_ytdlp_auth_args_pot_provider_enabled(_stub_config):
+    _stub_config.get_server_config.return_value = {
+        "pot_provider": {
+            "enabled": True,
+            "url": "http://bgutil-provider:4416",
+            "plugin_dir": "/app/yt-dlp-plugins",
+        }
+    }
+    args = StreamHelper.ytdlp_auth_args("https://www.youtube.com/live/abc")
+    assert "--plugin-dirs" in args
+    assert "/app/yt-dlp-plugins" in args
+    assert "--extractor-args" in args
+    assert "youtubepot-bgutilhttp:base_url=http://bgutil-provider:4416" in args
+
+
+def test_ytdlp_auth_args_pot_provider_disabled(_stub_config):
+    _stub_config.get_server_config.return_value = {"pot_provider": {"enabled": False}}
+    args = StreamHelper.ytdlp_auth_args("https://www.youtube.com/live/abc")
+    assert "--plugin-dirs" not in args
+    assert "--extractor-args" not in args
+
+
+def test_ytdlp_auth_args_pot_provider_skipped_for_twitch(_stub_config):
+    _stub_config.get_server_config.return_value = {"pot_provider": {"enabled": True}}
+    assert StreamHelper.ytdlp_auth_args("https://www.twitch.tv/foo") == []
+
+
 def test_get_stream_stats_success(mocker):
     mock_popen = mocker.patch("subprocess.Popen")
     process_mock = MagicMock()

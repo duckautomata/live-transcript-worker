@@ -43,6 +43,17 @@ RUN echo "Installing yt-dlp ${YTDLP_VERSION}" && \
          -o /app/bin/yt-dlp && \
     chmod a+rx /app/bin/yt-dlp
 
+# Install bgutil-ytdlp-pot-provider plugin (HTTP mode; pairs with the
+# bgutil-provider sidecar in docker-compose.yml). The plugin is loaded via
+# yt-dlp's --plugin-dirs flag, set in helper.ytdlp_auth_args.
+ARG BGUTIL_VERSION="unknown"
+RUN echo "Installing bgutil-ytdlp-pot-provider ${BGUTIL_VERSION}" && \
+    mkdir -p /app/yt-dlp-plugins && \
+    curl -L "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_VERSION}/bgutil-ytdlp-pot-provider.zip" \
+         -o /tmp/bgutil.zip && \
+    unzip -o /tmp/bgutil.zip -d /app/yt-dlp-plugins && \
+    rm /tmp/bgutil.zip
+
 # Copy application files
 COPY main.py main.py
 COPY live_transcript_worker live_transcript_worker

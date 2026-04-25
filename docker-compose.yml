@@ -2,6 +2,8 @@ services:
   live_transcript_worker:
     image: duckautomata/live-transcript-worker:latest
     restart: always
+    depends_on:
+      - bgutil-provider
     volumes:
       - ./config.yaml:/app/config/config.yaml:ro,z
       - ./cookies.txt:/app/cookies.txt:z
@@ -14,6 +16,15 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+  # Generates YouTube PO Tokens for yt-dlp's web_creator client.
+  # Required for --live-from-start DASH extraction once YouTube enrolls the host
+  # IP in the GVS PO-Token experiment. yt-dlp finds it via the bgutil plugin
+  # installed in the worker image; URL is set in config.yaml under
+  # server.pot_provider.url.
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: always
 
   watchtower:
     image: nickfedor/watchtower:latest

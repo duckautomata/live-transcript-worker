@@ -29,6 +29,15 @@ curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -
 chmod a+rx bin/yt-dlp
 echo "yt-dlp has been successfully downloaded to bin/yt-dlp."
 
+# --- bgutil PO Token plugin (paired with the bgutil-provider sidecar) ---
+# Only used when `server.pot_provider.enabled` is true in the config.
+echo -e "\nDownloading bgutil-ytdlp-pot-provider plugin..."
+mkdir -p yt-dlp-plugins
+curl -L https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/bgutil-ytdlp-pot-provider.zip -o /tmp/bgutil.zip
+unzip -o /tmp/bgutil.zip -d yt-dlp-plugins
+rm /tmp/bgutil.zip
+echo "bgutil plugin extracted to yt-dlp-plugins/."
+
 # --- Python Environment Setup ---
 echo -e "\nInstalling dependencies..."
 uv sync

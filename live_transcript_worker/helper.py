@@ -21,6 +21,9 @@ class StreamHelper:
         Returns YouTube-only yt-dlp args for authentication and content filtering:
         - --cookies <file> when `server.cookies.enabled` is true (bypasses bot restrictions)
         - --match-filter to skip members-only content (YouTube subscriber_only)
+        - --plugin-dirs and --extractor-args for the bgutil PO Token provider when
+          `server.pot_provider.enabled` is true (required for DASH live-from-start
+          when YouTube enrolls the host in the GVS PO-Token experiment)
 
         Returns an empty list for non-YouTube URLs (e.g. Twitch), since Twitch doesn't
         expose an `availability` field and doesn't need the cookies.
@@ -30,7 +33,9 @@ class StreamHelper:
 
         args = ["--match-filter", "availability!=?subscriber_only"]
 
-        cookies_cfg: dict = Config.get_server_config().get("cookies", {}) or {}
+        server_cfg = Config.get_server_config()
+
+        cookies_cfg: dict = server_cfg.get("cookies", {}) or {}
         if cookies_cfg.get("enabled", False):
             filename = cookies_cfg.get("filename", "cookies.txt")
             project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +44,19 @@ class StreamHelper:
                 args.extend(["--cookies", cookies_path])
             else:
                 logger.warning(f"[ytdlp_auth_args] Cookies enabled but file not found at '{cookies_path}'.")
+
+        pot_cfg: dict = server_cfg.get("pot_provider", {}) or {}
+        if pot_cfg.get("enabled", False):
+            plugin_dir = pot_cfg.get("plugin_dir", "/app/yt-dlp-plugins")
+            base_url = pot_cfg.get("url", "http://bgutil-provider:4416")
+            args.extend(
+                [
+                    "--plugin-dirs",
+                    plugin_dir,
+                    "--extractor-args",
+                    f"youtubepot-bgutilhttp:base_url={base_url}",
+                ]
+            )
         return args
 
     @staticmethod
