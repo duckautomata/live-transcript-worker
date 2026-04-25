@@ -45,14 +45,17 @@ RUN echo "Installing yt-dlp ${YTDLP_VERSION}" && \
 
 # Install bgutil-ytdlp-pot-provider plugin (HTTP mode; pairs with the
 # bgutil-provider sidecar in docker-compose.yml). The plugin is loaded via
-# yt-dlp's --plugin-dirs flag, set in helper.ytdlp_auth_args.
+# yt-dlp's --plugin-dirs flag, set in helper.ytdlp_auth_args. yt-dlp expects
+# the layout <plugin-dirs>/<pkg>/yt_dlp_plugins/extractor/*.py, so we extract
+# into a named subdirectory rather than directly into the plugin-dirs root.
 ARG BGUTIL_VERSION="unknown"
 RUN echo "Installing bgutil-ytdlp-pot-provider ${BGUTIL_VERSION}" && \
-    mkdir -p /app/yt-dlp-plugins && \
+    mkdir -p /app/yt-dlp-plugins/bgutil-ytdlp-pot-provider && \
     curl -L "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_VERSION}/bgutil-ytdlp-pot-provider.zip" \
          -o /tmp/bgutil.zip && \
-    unzip -o /tmp/bgutil.zip -d /app/yt-dlp-plugins && \
-    rm /tmp/bgutil.zip
+    unzip -o /tmp/bgutil.zip -d /app/yt-dlp-plugins/bgutil-ytdlp-pot-provider && \
+    rm /tmp/bgutil.zip && \
+    ls /app/yt-dlp-plugins/bgutil-ytdlp-pot-provider/yt_dlp_plugins/extractor/
 
 # Copy application files
 COPY main.py main.py

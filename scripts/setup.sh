@@ -31,12 +31,14 @@ echo "yt-dlp has been successfully downloaded to bin/yt-dlp."
 
 # --- bgutil PO Token plugin (paired with the bgutil-provider sidecar) ---
 # Only used when `server.pot_provider.enabled` is true in the config.
+# yt-dlp expects <plugin-dirs>/<pkg>/yt_dlp_plugins/... so we extract into a
+# named subdirectory.
 echo -e "\nDownloading bgutil-ytdlp-pot-provider plugin..."
-mkdir -p yt-dlp-plugins
+mkdir -p yt-dlp-plugins/bgutil-ytdlp-pot-provider
 curl -L https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/bgutil-ytdlp-pot-provider.zip -o /tmp/bgutil.zip
-unzip -o /tmp/bgutil.zip -d yt-dlp-plugins
+unzip -o /tmp/bgutil.zip -d yt-dlp-plugins/bgutil-ytdlp-pot-provider
 rm /tmp/bgutil.zip
-echo "bgutil plugin extracted to yt-dlp-plugins/."
+echo "bgutil plugin extracted to yt-dlp-plugins/bgutil-ytdlp-pot-provider/."
 
 # --- Python Environment Setup ---
 echo -e "\nInstalling dependencies..."
