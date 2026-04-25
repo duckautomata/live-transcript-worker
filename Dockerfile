@@ -19,7 +19,7 @@ ENV PATH="/root/.local/bin:$PATH"
 
 # Setting up app
 WORKDIR /app
-RUN mkdir -p /app/tmp /app/models /app/bin
+RUN mkdir -p /app/tmp /app/models
 
 # Install dependencies via uv
 COPY pyproject.toml .
@@ -35,13 +35,6 @@ RUN echo "Installing Deno ${DENO_VERSION}" && \
     unzip -o /tmp/deno.zip -d /usr/local/bin && \
     rm /tmp/deno.zip && \
     chmod a+rx /usr/local/bin/deno
-
-# Install yt-dlp binary
-ARG YTDLP_VERSION="unknown"
-RUN echo "Installing yt-dlp ${YTDLP_VERSION}" && \
-    curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" \
-         -o /app/bin/yt-dlp && \
-    chmod a+rx /app/bin/yt-dlp
 
 # Copy application files
 COPY main.py main.py

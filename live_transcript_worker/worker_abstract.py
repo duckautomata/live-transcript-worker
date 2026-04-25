@@ -18,7 +18,7 @@ class AbstractWorker(ABC):
         self.stop_event = stop_event
 
         project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
+        self.ytdlp_path = os.path.join(project_root_dir, ".venv", "bin", "yt-dlp")
         self.buffer_size_seconds: int = Config.get_server_config().get("buffer_size_seconds", 6)
 
         # Stale-detection thresholds (all in seconds).

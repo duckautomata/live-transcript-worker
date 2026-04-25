@@ -8,11 +8,9 @@ resolve_version() {
         | tr -d '[:space:]'
 }
 
-YTDLP_VERSION=$(resolve_version "yt-dlp/yt-dlp")
 DENO_VERSION=$(resolve_version "denoland/deno")
 
-echo "Resolved yt-dlp version: $YTDLP_VERSION"
-echo "Resolved Deno version:   $DENO_VERSION"
+echo "Resolved Deno version: $DENO_VERSION"
 
 IMAGE_NAME="duckautomata/live-transcript-worker"
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -23,7 +21,6 @@ if [ -z "${NEW_VERSION:-}" ]; then
     docker build \
         --build-arg APP_VERSION="${NEW_VERSION}" \
         --build-arg BUILD_DATE="${BUILD_DATE}" \
-        --build-arg YTDLP_VERSION="${YTDLP_VERSION}" \
         --build-arg DENO_VERSION="${DENO_VERSION}" \
         -t "${IMAGE_NAME}:dev" \
         .
@@ -37,7 +34,6 @@ echo "Building version ${NEW_VERSION}..."
 docker build \
     --build-arg APP_VERSION="${NEW_VERSION}" \
     --build-arg BUILD_DATE="${BUILD_DATE}" \
-    --build-arg YTDLP_VERSION="${YTDLP_VERSION}" \
     --build-arg DENO_VERSION="${DENO_VERSION}" \
     -t "${IMAGE_NAME}:${NEW_VERSION}" \
     -t "${IMAGE_NAME}:latest" \

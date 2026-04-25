@@ -22,13 +22,6 @@ for tool in ffmpeg curl deno uv; do
     echo "$tool found"
 done
 
-# --- Tool Download ---
-echo -e "\nDownloading yt-dlp..."
-mkdir -p bin
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o bin/yt-dlp
-chmod a+rx bin/yt-dlp
-echo "yt-dlp has been successfully downloaded to bin/yt-dlp."
-
 # --- Python Environment Setup ---
 echo -e "\nInstalling dependencies..."
 uv sync

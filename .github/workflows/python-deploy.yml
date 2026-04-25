@@ -113,7 +113,7 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Get Latest Dependency Versions
-        # Used as a cache key for the yt-dlp/deno install step.
+        # Used as a cache key for the deno install step.
         # Any new release invalidates the cache and forces docker to install it.
         id: versions
         run: |
@@ -124,17 +124,14 @@ jobs:
               | tr -d '[:space:]'
           }
 
-          YTDLP_VERSION=$(resolve_version "yt-dlp/yt-dlp")
           DENO_VERSION=$(resolve_version "denoland/deno")
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          echo "ytdlp=$YTDLP_VERSION" >> $GITHUB_OUTPUT
-          echo "deno=$DENO_VERSION"   >> $GITHUB_OUTPUT
-          echo "date=$BUILD_DATE"     >> $GITHUB_OUTPUT
+          echo "deno=$DENO_VERSION" >> $GITHUB_OUTPUT
+          echo "date=$BUILD_DATE"   >> $GITHUB_OUTPUT
 
-          echo "Resolved yt-dlp version: $YTDLP_VERSION"
-          echo "Resolved Deno version:   $DENO_VERSION"
-          echo "Using Build Date:        $BUILD_DATE"
+          echo "Resolved Deno version: $DENO_VERSION"
+          echo "Using Build Date:      $BUILD_DATE"
 
       - name: Build and Push
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
@@ -146,7 +143,6 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.tag_version.outputs.new_version }}
             BUILD_DATE=${{ steps.versions.outputs.date }}
-            YTDLP_VERSION=${{ steps.versions.outputs.ytdlp }}
             DENO_VERSION=${{ steps.versions.outputs.deno }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
