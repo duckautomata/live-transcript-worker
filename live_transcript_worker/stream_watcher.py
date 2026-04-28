@@ -136,7 +136,7 @@ class StreamWatcher:
                             f"[{key}][watcher] {url} offline with no schedule. "
                             f"Next check in {StreamHelper.format_duration(self.max_retry_interval_seconds)}."
                         )
-                    else:
+                    elif "twitch.tv" not in url.lower():
                         logger.debug(
                             f"[{key}][watcher] {url} using default poll rate. "
                             f"Next check in {StreamHelper.format_duration(next_url_checks[url] - now)}."

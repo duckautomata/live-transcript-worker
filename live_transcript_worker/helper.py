@@ -55,24 +55,48 @@ class StreamHelper:
         return re.sub(pattern, "", title).strip()
 
     @staticmethod
+    def _sanitize_url_for_filename(url: str) -> str:
+        """Maps a URL to a filesystem-safe identifier used for per-URL debug logs."""
+        sanitized = re.sub(r"[^A-Za-z0-9]+", "_", url).strip("_")
+        return sanitized[:150] or "unknown"
+
+    @staticmethod
     def _dump_stream_stats_debug(key: str, url: str, returncode: int | None, stdout: str, stderr: str) -> None:
-        """Writes the raw yt-dlp metadata response (or error output) to tmp/{key}/stream_stats.log
-        for debugging. Overwritten on each call so each key has its own latest response."""
+        """Appends the raw yt-dlp metadata response (or error output) to
+        tmp/{key}/stream_stats/{sanitized_url}.log for debugging. One file per URL so
+        different URLs in the same key don't clobber each other; appended so retries
+        of the same URL stay visible. Trimmed to the trailing ~250KB once the file
+        exceeds 1MB to keep recent history without growing unbounded."""
         if not key:
             return
         try:
             project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            debug_dir = os.path.join(project_root_dir, "tmp", key)
+            debug_dir = os.path.join(project_root_dir, "tmp", key, "stream_stats")
             os.makedirs(debug_dir, exist_ok=True)
-            debug_path = os.path.join(debug_dir, "stream_stats.log")
-            with open(debug_path, "w", encoding="utf-8") as f:
-                f.write(f"--- yt-dlp -j response at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+            debug_path = os.path.join(debug_dir, f"{StreamHelper._sanitize_url_for_filename(url)}.log")
+
+            max_bytes = 1_048_576
+            keep_bytes = 262_144
+            try:
+                if os.path.getsize(debug_path) > max_bytes:
+                    with open(debug_path, "rb") as f:
+                        f.seek(-keep_bytes, os.SEEK_END)
+                        tail = f.read()
+                    with open(debug_path, "wb") as f:
+                        f.write(b"--- truncated earlier history ---\n")
+                        f.write(tail)
+            except OSError:
+                pass
+
+            with open(debug_path, "a", encoding="utf-8") as f:
+                f.write(f"\n--- yt-dlp -j response at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
                 f.write(f"url: {url}\n")
                 f.write(f"returncode: {returncode}\n")
                 f.write("--- stdout ---\n")
                 f.write(stdout or "")
                 f.write("\n--- stderr ---\n")
                 f.write(stderr or "")
+                f.write("\n")
         except Exception as e:
             logger.warning(f"[stream_stats] Failed to write debug file: {e}")
 
