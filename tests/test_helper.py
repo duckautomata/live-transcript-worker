@@ -68,6 +68,122 @@ def test_get_stream_stats_failure(mocker):
 
     info = StreamHelper.get_stream_stats("http://test.com")
     assert info.is_live is False
+    assert info.scheduled_start_time == 0.0
+
+
+def test_parse_upcoming_seconds_days():
+    assert StreamHelper._parse_upcoming_seconds("ERROR: [youtube] DpNxmBaMB8Y: This live event will begin in 95 days.") == 95 * 86400
+
+
+def test_parse_upcoming_seconds_combined():
+    assert (
+        StreamHelper._parse_upcoming_seconds("ERROR: [youtube] abc: This live event will begin in 1 day, 2 hours, 30 minutes, 5 seconds.")
+        == 86400 + 2 * 3600 + 30 * 60 + 5
+    )
+
+
+def test_parse_upcoming_seconds_singular():
+    assert StreamHelper._parse_upcoming_seconds("This live event will begin in 1 hour.") == 3600
+
+
+def test_parse_upcoming_seconds_no_match():
+    assert StreamHelper._parse_upcoming_seconds("ERROR: [youtube] some unrelated error") is None
+
+
+def test_format_duration_examples_from_spec():
+    # Examples from the request: 480s -> "8 minutes", 7890s -> "2 hours, 11 minutes, 30 seconds".
+    assert StreamHelper.format_duration(480) == "8 minutes"
+    assert StreamHelper.format_duration(7890) == "2 hours, 11 minutes, 30 seconds"
+
+
+def test_format_duration_drops_zero_units_and_pluralizes():
+    assert StreamHelper.format_duration(60) == "1 minute"
+    assert StreamHelper.format_duration(3600) == "1 hour"
+    assert StreamHelper.format_duration(86400) == "1 day"
+    assert StreamHelper.format_duration(86400 + 3600 + 60 + 1) == "1 day, 1 hour, 1 minute, 1 second"
+    assert StreamHelper.format_duration(7200) == "2 hours"
+
+
+def test_format_duration_non_positive():
+    assert StreamHelper.format_duration(0) == "0 seconds"
+    assert StreamHelper.format_duration(-5) == "0 seconds"
+
+
+def test_format_duration_truncates_fractional():
+    # A float input is truncated to int seconds (we don't render sub-second precision).
+    assert StreamHelper.format_duration(59.9) == "59 seconds"
+
+
+def test_get_stream_stats_upcoming_via_stderr(mocker):
+    mock_popen = mocker.patch("subprocess.Popen")
+    mock_time = mocker.patch("time.time", return_value=1_000_000.0)
+    process_mock = MagicMock()
+    process_mock.returncode = 1
+    process_mock.communicate.return_value = (
+        "",
+        "ERROR: [youtube] DpNxmBaMB8Y: This live event will begin in 5 hours.",
+    )
+    mock_popen.return_value = process_mock
+
+    info = StreamHelper.get_stream_stats("https://www.youtube.com/channel/UC.../live")
+
+    assert info.is_live is False
+    assert info.scheduled_start_time == 1_000_000.0 + 5 * 3600
+    assert info.confirmed_offline is False
+    assert mock_time.called
+
+
+def test_get_stream_stats_confirmed_offline_via_stderr(mocker):
+    mock_popen = mocker.patch("subprocess.Popen")
+    process_mock = MagicMock()
+    process_mock.returncode = 1
+    process_mock.communicate.return_value = (
+        "",
+        "ERROR: [youtube:tab] UC3n5uGu18FoCy23ggWWp8tA: The channel is not currently live",
+    )
+    mock_popen.return_value = process_mock
+
+    info = StreamHelper.get_stream_stats("https://www.youtube.com/channel/UC.../live")
+
+    assert info.is_live is False
+    assert info.scheduled_start_time == 0.0
+    assert info.confirmed_offline is True
+
+
+def test_get_stream_stats_unknown_error_not_offline(mocker):
+    """Other non-zero errors (e.g. member-only, network) should NOT trigger confirmed_offline."""
+    mock_popen = mocker.patch("subprocess.Popen")
+    process_mock = MagicMock()
+    process_mock.returncode = 1
+    process_mock.communicate.return_value = ("", "ERROR: Some unrelated network failure")
+    mock_popen.return_value = process_mock
+
+    info = StreamHelper.get_stream_stats("https://www.youtube.com/channel/UC.../live")
+
+    assert info.is_live is False
+    assert info.scheduled_start_time == 0.0
+    assert info.confirmed_offline is False
+
+
+def test_get_stream_stats_twitch_skips_stderr_parsing(mocker):
+    """Twitch has no scheduled-start concept and we don't want to back off polling
+    on transient Twitch errors. Even if the stderr happens to contain phrases that
+    would set scheduled_start_time / confirmed_offline for YouTube, Twitch URLs
+    must leave both fields at defaults so the watcher uses the default poll rate."""
+    mock_popen = mocker.patch("subprocess.Popen")
+    process_mock = MagicMock()
+    process_mock.returncode = 1
+    process_mock.communicate.return_value = (
+        "",
+        "ERROR: This live event will begin in 5 hours. The channel is not currently live",
+    )
+    mock_popen.return_value = process_mock
+
+    info = StreamHelper.get_stream_stats("https://www.twitch.tv/somechannel")
+
+    assert info.is_live is False
+    assert info.scheduled_start_time == 0.0
+    assert info.confirmed_offline is False
 
 
 def test_get_stream_stats_json_error(mocker):

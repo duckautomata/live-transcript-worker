@@ -427,7 +427,16 @@ class DASHWorker(AbstractWorker):
 
         while not self.stop_event.is_set():
             if process.poll() is not None:
-                logger.info(f"[{info.key}][DASHWorker] yt-dlp process ended.")
+                if process.returncode != 0 and last_seq == start_seq:
+                    logger.warning(
+                        f"[{info.key}][DASHWorker] yt-dlp exited with code {process.returncode} before producing any fragments. "
+                        f"Switching to LiveSegmentWorker."
+                    )
+                    self.is_slow = True
+                elif process.returncode != 0:
+                    logger.warning(f"[{info.key}][DASHWorker] yt-dlp exited with code {process.returncode} after seq {last_seq}.")
+                else:
+                    logger.info(f"[{info.key}][DASHWorker] yt-dlp process ended.")
                 break
 
             files = glob.glob(os.path.join(fragment_dir, "*"))

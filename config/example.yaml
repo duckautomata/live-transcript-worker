@@ -14,12 +14,23 @@ server:
   # Local file is stored under tmp/{key}/transcript.txt
   enabled: true
 
-  # While a key is not live, it will wait this many seconds before checking again to see if a stream is live.
-  # If this is too small, then you will get blocked for a day.
-  seconds_between_channel_retry: 20
-
   # How long each line will be in seconds
   buffer_size_seconds: 6
+
+  # How often the watcher polls each url to check if a stream is live.
+  channel_polling:
+    # Default seconds between polls when state is unknown / changing.
+    # If too small, the platform may rate-limit you (especially YouTube).
+    interval_seconds: 60
+
+    # Cap on the interval. Used when yt-dlp reports a far-future schedule
+    # (e.g. "begins in 95 days") or that the channel is offline.
+    # Lower this to catch unannounced streams sooner; raise it to reduce request volume.
+    max_interval_seconds: 9000
+
+    # When yt-dlp reports a scheduled start time, wake up this many seconds
+    # before the scheduled start to catch streams that go live a bit early.
+    pre_scheduled_buffer_seconds: 300
 
   # Cookie file passed to yt-dlp (used to bypass bot restrictions on some sites).
   # The file must exist at the project root (same directory as bin/, config/, etc.).
