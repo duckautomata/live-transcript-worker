@@ -473,8 +473,8 @@ class Storage(metaclass=SingletonMeta):
         for attempt in range(1, max_attempts + 1):
             try:
                 response = self.session.post(url, **kwargs)
-                if response.status_code == 200 or response.status_code == 409 or response.status_code == 500 or attempt == max_attempts:
-                    return response  # success, out of sync, server error, or last attempt — let caller handle it
+                if response.status_code in [200, 208, 409, 500] or attempt == max_attempts:
+                    return response  # success, already reported, out of sync, server error, or last attempt - let caller handle it
                 wait = 2**attempt
                 logger.warning(f"Request returned {response.status_code} (attempt {attempt}/{max_attempts}), retrying in {wait}s")
                 time.sleep(wait)
