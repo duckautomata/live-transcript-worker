@@ -121,15 +121,17 @@ class StreamHelper:
             stdout, stderr = process.communicate(timeout=30)
             returncode = process.returncode
 
-            if returncode != 0 and "twitch.tv" not in url.lower():
+            if returncode != 0:
                 # yt-dlp errors for upcoming or offline YouTube channels with informative
-                # stderr. Parse it so the watcher can back off polling.
-                # Skipped for Twitch since it has no scheduled-start concept.
-                upcoming = StreamHelper._parse_upcoming_seconds(stderr)
-                if upcoming is not None:
-                    info.scheduled_start_time = time.time() + upcoming
-                elif "not currently live" in stderr:
-                    info.confirmed_offline = True
+                # stderr. Parse it so the watcher can back off polling. Skipped for
+                # Twitch since it has no scheduled-start concept and we don't want to
+                # back off polling on transient Twitch errors.
+                if "twitch.tv" not in url.lower():
+                    upcoming = StreamHelper._parse_upcoming_seconds(stderr)
+                    if upcoming is not None:
+                        info.scheduled_start_time = time.time() + upcoming
+                    elif "not currently live" in stderr:
+                        info.confirmed_offline = True
             else:
                 try:
                     metadata: dict = json.loads(stdout)

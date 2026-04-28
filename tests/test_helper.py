@@ -165,11 +165,36 @@ def test_get_stream_stats_unknown_error_not_offline(mocker):
     assert info.confirmed_offline is False
 
 
+def test_get_stream_stats_twitch_offline_uses_default_poll(mocker):
+    """Real Twitch offline error from the wild. Three things must hold:
+    1. scheduled_start_time / confirmed_offline stay at defaults (so the watcher
+       uses the default poll rate, not the 2.5h max).
+    2. No JSONDecodeError path is hit (empty stdout must not trigger json.loads).
+    3. is_live stays False.
+    """
+    mock_popen = mocker.patch("subprocess.Popen")
+    mock_logger_error = mocker.patch("live_transcript_worker.helper.logger.error")
+    process_mock = MagicMock()
+    process_mock.returncode = 1
+    process_mock.communicate.return_value = (
+        "",
+        "ERROR: [twitch:stream] dokibird: The channel is not currently live\n",
+    )
+    mock_popen.return_value = process_mock
+
+    info = StreamHelper.get_stream_stats("https://www.twitch.tv/dokibird")
+
+    assert info.is_live is False
+    assert info.scheduled_start_time == 0.0
+    assert info.confirmed_offline is False
+    # Regression: the Twitch error path must NOT fall through to json.loads("").
+    json_errors = [c for c in mock_logger_error.call_args_list if "Could not decode JSON" in str(c)]
+    assert not json_errors, f"unexpected JSON decode error: {json_errors}"
+
+
 def test_get_stream_stats_twitch_skips_stderr_parsing(mocker):
-    """Twitch has no scheduled-start concept and we don't want to back off polling
-    on transient Twitch errors. Even if the stderr happens to contain phrases that
-    would set scheduled_start_time / confirmed_offline for YouTube, Twitch URLs
-    must leave both fields at defaults so the watcher uses the default poll rate."""
+    """Even if Twitch stderr happens to contain YouTube-style phrases, we must
+    leave scheduled_start_time / confirmed_offline at defaults."""
     mock_popen = mocker.patch("subprocess.Popen")
     process_mock = MagicMock()
     process_mock.returncode = 1
