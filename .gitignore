@@ -1,7 +1,7 @@
 tmp/
 bin/
 models/
-cookies.txt
+cookies*.txt
 
 # Exclude all configurations except for the example.
 *.yaml

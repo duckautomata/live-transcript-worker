@@ -32,13 +32,18 @@ server:
     # before the scheduled start to catch streams that go live a bit early.
     pre_scheduled_buffer_seconds: 300
 
-  # Cookie file passed to yt-dlp (used to bypass bot restrictions on some sites).
-  # The file must exist at the project root (same directory as bin/, config/, etc.).
+  # Cookie files passed to yt-dlp (used to bypass bot restrictions on some sites).
+  # Each file must exist at the project root (same directory as bin/, config/, etc.).
+  # The check and download cookies are kept separate so they can come from different
+  # accounts and be rotated independently (rotating the download cookie won't
+  # invalidate the watcher's polling, and vice versa). They may point to the same file.
   cookies:
     # If true, yt-dlp will be invoked with --cookies <filename>.
     enabled: false
-    # Filename of the cookies file, relative to the project root.
-    filename: cookies.txt
+    # Cookie file used for the periodic `yt-dlp -j` stream availability checks.
+    check_filename: cookies.txt
+    # Cookie file used for the actual stream download.
+    download_filename: cookies.txt
 
   # Stale-detection thresholds. All values are in seconds.
   stale_threshold:

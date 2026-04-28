@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import time
+from typing import Literal
 
 import av
 
@@ -16,10 +17,13 @@ logger = logging.getLogger(__name__)
 
 class StreamHelper:
     @staticmethod
-    def ytdlp_auth_args(url: str) -> list[str]:
+    def ytdlp_auth_args(url: str, purpose: Literal["check", "download"] = "download") -> list[str]:
         """
         Returns YouTube-only yt-dlp args for authentication and content filtering:
-        - --cookies <file> when `server.cookies.enabled` is true (bypasses bot restrictions)
+        - --cookies <file> when `server.cookies.enabled` is true (bypasses bot restrictions).
+          Picks `check_filename` for the lightweight `yt-dlp -j` availability poll and
+          `download_filename` for the actual stream pull, so the two cookies can be
+          rotated / scoped to different accounts independently.
         - --match-filter to skip members-only content (YouTube subscriber_only)
 
         Returns an empty list for non-YouTube URLs (e.g. Twitch), since Twitch doesn't
@@ -32,13 +36,14 @@ class StreamHelper:
 
         cookies_cfg: dict = Config.get_server_config().get("cookies", {}) or {}
         if cookies_cfg.get("enabled", False):
-            filename = cookies_cfg.get("filename", "cookies.txt")
+            key = "check_filename" if purpose == "check" else "download_filename"
+            filename = cookies_cfg.get(key, "cookies.txt")
             project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             cookies_path = os.path.join(project_root_dir, filename)
             if os.path.isfile(cookies_path):
                 args.extend(["--cookies", cookies_path])
             else:
-                logger.warning(f"[ytdlp_auth_args] Cookies enabled but file not found at '{cookies_path}'.")
+                logger.warning(f"[ytdlp_auth_args] Cookies enabled but {purpose} cookies file not found at '{cookies_path}'.")
         return args
 
     @staticmethod
@@ -104,7 +109,7 @@ class StreamHelper:
         """
         project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         ytdlp_path = os.path.join(project_root_dir, "bin", "yt-dlp")
-        cmd = [ytdlp_path, "-j", *StreamHelper.ytdlp_auth_args(url), url]  # -j is alias for --dump-json
+        cmd = [ytdlp_path, "-j", *StreamHelper.ytdlp_auth_args(url, purpose="check"), url]  # -j is alias for --dump-json
         process = None
         info = StreamInfoObject(url=url)
         stdout = ""

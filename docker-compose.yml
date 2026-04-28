@@ -4,7 +4,8 @@ services:
     restart: always
     volumes:
       - ./config.yaml:/app/config/config.yaml:ro,z
-      - ./cookies.txt:/app/cookies.txt:z
+      - ./cookies_check.txt:/app/cookies_check.txt:z
+      - ./cookies_download.txt:/app/cookies_download.txt:z
       - ./tmp:/app/tmp:z
       - ./models:/app/models:z
     deploy:

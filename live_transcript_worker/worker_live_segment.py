@@ -146,7 +146,7 @@ class LiveSegmentWorker(AbstractWorker):
                 self.ytdlp_path,
                 "--quiet",
                 "--no-warnings",
-                *StreamHelper.ytdlp_auth_args(info.url),
+                *StreamHelper.ytdlp_auth_args(info.url, purpose="download"),
                 "-f",
                 fmt_selector,
                 "-o",
