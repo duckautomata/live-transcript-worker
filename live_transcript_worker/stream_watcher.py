@@ -21,7 +21,10 @@ class StreamWatcher:
     """
 
     def __init__(self):
-        self.seconds_between_channel_retry: int = Config.get_server_config().get("seconds_between_channel_retry", 20)
+        channel_polling = Config.get_server_config().get("channel_polling", {}) or {}
+        self.retry_interval_seconds: int = channel_polling.get("interval_seconds", 60)
+        self.max_retry_interval_seconds: int = channel_polling.get("max_interval_seconds", 9000)
+        self.pre_scheduled_buffer_seconds: int = channel_polling.get("pre_scheduled_buffer_seconds", 300)
         # Used to tell the threads when to stop. Used on shutdown.
         self.stop_event = Event()
 
@@ -82,26 +85,32 @@ class StreamWatcher:
         Internal threaded method used to watch for when a stream starts.
         Once a stream starts, it will start the worker for that stream.
         Once the worker stops, it will start watching again.
+
+        Each url has its own next_check time so a YouTube channel with a stream
+        scheduled hours out can sleep without starving a Twitch url in the same
+        key, which has no schedule and must be polled on the regular cadence.
         """
         logger.info(f"[{key}][watcher] starting thread")
         worker = Worker(key, self.processing_queue, self.stop_event)
         last_stream_id = ""
-        next_check = time.time()
+        next_url_checks: dict[str, float] = dict.fromkeys(urls, 0.0)
         while not self.stop_event.is_set():
-            if time.time() <= next_check:
+            soonest = min(next_url_checks.values()) if next_url_checks else time.time()
+            if time.time() < soonest:
                 time.sleep(1)
                 continue
 
             id_blacklist = Config.get_id_blacklist_config()
             for url in urls:
-                info: StreamInfoObject = StreamHelper.get_stream_stats_until_valid_start(url, 10, key)
-                if info.stream_id in id_blacklist:
-                    # blacklisted stream, continue on to the next url
+                if time.time() < next_url_checks[url]:
                     continue
 
+                info: StreamInfoObject = StreamHelper.get_stream_stats_until_valid_start(url, 10, key)
                 info.key = key
                 info.media_type = StreamHelper.get_media_type(url, key)
-                if info.is_live:
+                blacklisted = info.stream_id in id_blacklist
+
+                if not blacklisted and info.is_live:
                     logger.info(
                         f'[{key}][watcher] stream "{info.stream_title}" id {info.stream_id} started at {info.start_time} using media {info.media_type}'
                     )
@@ -109,12 +118,35 @@ class StreamWatcher:
                     last_stream_id = info.stream_id
                     worker.start(info)
                     self.storage.deactivate(key, info.stream_id)
+
+                # Default to short retry; extend for scheduled or offline urls.
+                now = time.time()
+                next_url_checks[url] = now + self.retry_interval_seconds + random.randint(-5, 10)
+                if not blacklisted and not info.is_live:
+                    if info.scheduled_start_time > 0:
+                        pre_stream = info.scheduled_start_time - self.pre_scheduled_buffer_seconds
+                        next_url_checks[url] = max(next_url_checks[url], min(pre_stream, now + self.max_retry_interval_seconds))
+                        logger.debug(
+                            f"[{key}][watcher] {url} scheduled stream in {StreamHelper.format_duration(info.scheduled_start_time - now)}. "
+                            f"Next check in {StreamHelper.format_duration(next_url_checks[url] - now)}."
+                        )
+                    elif info.confirmed_offline:
+                        next_url_checks[url] = now + self.max_retry_interval_seconds
+                        logger.debug(
+                            f"[{key}][watcher] {url} offline with no schedule. "
+                            f"Next check in {StreamHelper.format_duration(self.max_retry_interval_seconds)}."
+                        )
+                    else:
+                        logger.debug(
+                            f"[{key}][watcher] {url} using default poll rate. "
+                            f"Next check in {StreamHelper.format_duration(next_url_checks[url] - now)}."
+                        )
+
                 if self.stop_event.is_set():
                     logger.info(f"[{key}][watcher] stopping")
                     if not info.is_live:
                         self.storage.deactivate(key, info.stream_id)
                     return
-            next_check = time.time() + self.seconds_between_channel_retry + random.randint(-5, 10)
             time.sleep(0.5)
         logger.info(f"[{key}][watcher] out of loop stopping. Using last_stream_id to deactivate.")
         self.storage.deactivate(key, last_stream_id)

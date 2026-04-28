@@ -72,6 +72,31 @@ class StreamHelper:
             logger.warning(f"[stream_stats] Failed to write debug file: {e}")
 
     @staticmethod
+    def _parse_upcoming_seconds(stderr: str) -> int | None:
+        """Parses 'This live event will begin in <duration>.' from yt-dlp stderr.
+        Handles 'X days', 'X hours, Y minutes', etc. Returns total seconds, or None."""
+        match = re.search(r"will begin in ([^.]+)", stderr)
+        if not match:
+            return None
+        units = {"day": 86400, "hour": 3600, "minute": 60, "second": 1}
+        seconds = sum(int(v) * units[u] for v, u in re.findall(r"(\d+)\s+(day|hour|minute|second)s?", match.group(1)))
+        return seconds or None
+
+    @staticmethod
+    def format_duration(seconds: float) -> str:
+        """Render seconds as '2 hours, 11 minutes, 30 seconds'. Drops zero-valued
+        units and pluralizes correctly. Returns '0 seconds' for non-positive input."""
+        s = int(seconds)
+        if s <= 0:
+            return "0 seconds"
+        parts = []
+        for name, size in (("day", 86400), ("hour", 3600), ("minute", 60), ("second", 1)):
+            n, s = divmod(s, size)
+            if n:
+                parts.append(f"{n} {name}{'s' if n != 1 else ''}")
+        return ", ".join(parts)
+
+    @staticmethod
     def get_stream_stats(url: str, key: str = "") -> StreamInfoObject:
         """grabs the stats of a stream
 
@@ -96,39 +121,42 @@ class StreamHelper:
             stdout, stderr = process.communicate(timeout=30)
             returncode = process.returncode
 
-            if process.returncode != 0:
-                raise Exception(f"yt-dlp metadata fetch failed (code {process.returncode}): {stderr}")
+            if returncode != 0 and "twitch.tv" not in url.lower():
+                # yt-dlp errors for upcoming or offline YouTube channels with informative
+                # stderr. Parse it so the watcher can back off polling.
+                # Skipped for Twitch since it has no scheduled-start concept.
+                upcoming = StreamHelper._parse_upcoming_seconds(stderr)
+                if upcoming is not None:
+                    info.scheduled_start_time = time.time() + upcoming
+                elif "not currently live" in stderr:
+                    info.confirmed_offline = True
+            else:
+                try:
+                    metadata: dict = json.loads(stdout)
 
-            try:
-                metadata: dict = json.loads(stdout)
+                    # For YouTube, 'release_timestamp' is the stream start epoch.
+                    # For Twitch, 'timestamp' is the stream start epoch.
+                    info.is_live = metadata.get("is_live", False) or metadata.get("live_status", "") == "is_live"
+                    if info.is_live:
+                        info.stream_id = metadata.get("id", "Unknown ID")
+                        if "twitch.tv" in url.lower():
+                            info.stream_title = (
+                                f"{metadata.get('display_id', 'Unknown Channel')} - {metadata.get('description', 'Unknown Title')}"
+                            )
+                            start_time = metadata.get("timestamp")
+                        else:
+                            info.stream_title = StreamHelper.remove_date(metadata.get("title", "Unknown Title"))
+                            start_time = metadata.get("release_timestamp") or metadata.get("timestamp")
 
-                # Note
-                # For YouTube, 'release_timestamp' is the epoch (s) for when the stream started
-                # For Twitch, 'timestamp' is the epoch (s) for when the stream started
-                info.is_live = metadata.get("is_live", False) or metadata.get("live_status", "") == "is_live"
-                if info.is_live:
-                    info.stream_id = metadata.get("id", "Unknown ID")
-                    info.stream_title = StreamHelper.remove_date(metadata.get("title", "Unknown Title"))
-                    start_time = metadata.get("release_timestamp")
-                    if "twitch.tv" in url.lower():
-                        info.stream_title = (
-                            f"{metadata.get('display_id', 'Unknown Channel')} - {metadata.get('description', 'Unknown Title')}"
-                        )
-                        start_time = metadata.get("timestamp")
+                        if not start_time:
+                            logger.warning(f"[stream_stats] Could not find start_time for {url}. Falling back to current time.")
+                            start_time = time.time()
+                        info.start_time = str(start_time)
 
-                    if start_time is None or start_time == 0:
-                        start_time = metadata.get("timestamp")
-
-                    if start_time is None or start_time == 0:
-                        start_time = time.time()
-                        logger.warning(f"[stream_stats] Could not find start_time for {url}. Falling back to current time.")
-
-                    info.start_time = str(start_time)
-
-            except json.JSONDecodeError:
-                logger.error("[stream_stats] Could not decode JSON metadata from yt-dlp.")
-            except Exception as e:
-                logger.error(f"[stream_stats] Error parsing metadata: {e}")
+                except json.JSONDecodeError:
+                    logger.error("[stream_stats] Could not decode JSON metadata from yt-dlp.")
+                except Exception as e:
+                    logger.error(f"[stream_stats] Error parsing metadata: {e}")
 
         except subprocess.TimeoutExpired:
             logger.error("[stream_stats] yt-dlp metadata fetch timed out.")
@@ -137,7 +165,6 @@ class StreamHelper:
         except FileNotFoundError:
             logger.error("[stream_stats] 'yt-dlp' command not found for metadata fetch.")
         except Exception:
-            # this is usually when it is a member stream, or the stream is not live yet.
             pass
 
         StreamHelper._dump_stream_stats_debug(key, url, returncode, stdout, stderr)

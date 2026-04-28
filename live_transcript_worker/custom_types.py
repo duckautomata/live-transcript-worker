@@ -51,6 +51,8 @@ class StreamInfoObject:
     start_time: str
     key: str
     media_type: str
+    scheduled_start_time: float
+    confirmed_offline: bool
 
     def __init__(
         self,
@@ -61,6 +63,8 @@ class StreamInfoObject:
         start_time: str = "0",
         key: str = "",
         media_type: str = Media.NONE,
+        scheduled_start_time: float = 0.0,
+        confirmed_offline: bool = False,
     ):
         self.url = url
         self.is_live = is_live
@@ -69,3 +73,5 @@ class StreamInfoObject:
         self.start_time = start_time
         self.key = key
         self.media_type = media_type
+        self.scheduled_start_time = scheduled_start_time
+        self.confirmed_offline = confirmed_offline
