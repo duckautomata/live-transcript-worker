@@ -17,6 +17,14 @@ server:
   # How long each line will be in seconds
   buffer_size_seconds: 6
 
+  # If enabled, the worker ignores each streamer's static `urls` list and
+  # instead polls the server's /{key}/incoming endpoint for URLs queued by the
+  # announcement bot.
+  incoming_polling:
+    enabled: false
+    # How often the worker polls /{key}/incoming for new URLs (seconds).
+    interval_seconds: 30
+
   # How often the watcher polls each url to check if a stream is live.
   channel_polling:
     # Default seconds between polls when state is unknown / changing.

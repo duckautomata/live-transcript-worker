@@ -232,6 +232,187 @@ def test_watcher_polls_each_url_independently(stream_watcher, mocker):
     assert "yt-url" in schedule_logs[0]
 
 
+def test_add_incoming(stream_watcher):
+    stream_watcher.add_incoming("doki")
+    assert len(stream_watcher.watcher_threads) == 1
+    stream_watcher.storage.create_paths.assert_called_with("doki")
+
+
+def test_watcher_incoming_runs_worker_for_live_stream(stream_watcher, mocker):
+    """A URL fetched from /incoming whose stream is live should be activated,
+    handed to the worker, then deactivated. We do NOT delete from /incoming
+    here — worker.start can exit cleanly or from a transient error, so we let
+    the offline-twice path handle cleanup uniformly."""
+    mocker.patch("time.sleep")
+    stream_watcher.storage.get_incoming_urls.return_value = ["https://twitch.tv/foo"]
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=True, stream_id="id", start_time="100"),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+
+    mock_worker_cls = mocker.patch("live_transcript_worker.stream_watcher.Worker")
+    mock_worker = mock_worker_cls.return_value
+
+    stream_watcher.stop_event.is_set.side_effect = [False, False, True]
+
+    stream_watcher.watcher_incoming("doki")
+
+    mock_worker.start.assert_called()
+    stream_watcher.storage.activate.assert_called()
+    stream_watcher.storage.deactivate.assert_called()
+    stream_watcher.storage.delete_incoming_url.assert_not_called()
+
+
+def test_watcher_incoming_deletes_after_two_offline_checks(stream_watcher, mocker):
+    """A URL whose stream is offline twice in a row should be removed from /incoming.
+    The first offline check should NOT trigger a delete."""
+    mocker.patch("time.sleep")
+    mocker.patch("random.randint", return_value=0)
+    # Force the URL to be due on every iteration.
+    stream_watcher.retry_interval_seconds = 0
+    stream_watcher.storage.get_incoming_urls.return_value = ["https://twitch.tv/foo"]
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=False, scheduled_start_time=0.0),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+    mocker.patch("live_transcript_worker.stream_watcher.Worker")
+
+    # 1st outer: while-top False, then per-URL is_set False after schedule; 2nd outer:
+    # while-top False, then per-URL hits the delete branch (continue, no is_set check);
+    # 3rd outer: while-top True -> exit.
+    stream_watcher.stop_event.is_set.side_effect = [False, False, False, True]
+
+    stream_watcher.watcher_incoming("doki")
+
+    stream_watcher.storage.delete_incoming_url.assert_called_with("doki", "https://twitch.tv/foo")
+
+
+def test_watcher_incoming_no_delete_after_single_offline(stream_watcher, mocker):
+    """A single offline check is not enough to trigger deletion."""
+    mocker.patch("time.sleep")
+    stream_watcher.storage.get_incoming_urls.return_value = ["https://twitch.tv/foo"]
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=False, scheduled_start_time=0.0),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+    mocker.patch("live_transcript_worker.stream_watcher.Worker")
+
+    # Only one inner iteration - one offline check. Should NOT delete yet.
+    stream_watcher.stop_event.is_set.side_effect = [False, False, True]
+
+    stream_watcher.watcher_incoming("doki")
+
+    stream_watcher.storage.delete_incoming_url.assert_not_called()
+
+
+def test_watcher_incoming_skips_scheduled_streams_for_offline_count(stream_watcher, mocker):
+    """A YouTube URL with a scheduled_start_time in the future is not 'offline' —
+    we wait for the scheduled time. It should never be deleted just because
+    successive checks return is_live=False."""
+    import time as _time
+
+    mocker.patch("time.sleep")
+    stream_watcher.storage.get_incoming_urls.return_value = ["https://youtube.com/watch?v=abc"]
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=False, scheduled_start_time=_time.time() + 3600),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+    mocker.patch("live_transcript_worker.stream_watcher.Worker")
+
+    # Many iterations - none should delete since the stream is scheduled.
+    stream_watcher.stop_event.is_set.side_effect = [False] * 10 + [True]
+
+    stream_watcher.watcher_incoming("doki")
+
+    stream_watcher.storage.delete_incoming_url.assert_not_called()
+
+
+def test_watcher_incoming_dedupes_urls_across_polls(stream_watcher, mocker):
+    """If the bot re-queues the same URL while we're still tracking it, the
+    second poll should not log/track it as new."""
+    mocker.patch("time.sleep")
+    # Repeated GETs return the same URL - simulating the bot re-queuing.
+    stream_watcher.storage.get_incoming_urls.return_value = ["https://twitch.tv/foo"]
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=False, scheduled_start_time=0.0),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+    mocker.patch("live_transcript_worker.stream_watcher.Worker")
+
+    # Force /incoming to be polled multiple times by setting interval to 0.
+    stream_watcher.incoming_poll_interval_seconds = 0
+    stream_watcher.stop_event.is_set.side_effect = [False, False, False, False, True]
+
+    info_logs: list[str] = []
+    mocker.patch.object(
+        __import__("live_transcript_worker.stream_watcher", fromlist=["logger"]).logger,
+        "info",
+        side_effect=lambda msg, *a, **k: info_logs.append(msg),
+    )
+
+    stream_watcher.watcher_incoming("doki")
+
+    # "new incoming URL" should appear only once even though /incoming was polled multiple times.
+    new_url_logs = [m for m in info_logs if "new incoming URL" in m]
+    assert len(new_url_logs) == 1, new_url_logs
+
+
+def test_watcher_incoming_deletes_after_worker_then_two_offline(stream_watcher, mocker):
+    """Full lifecycle: worker runs against a live stream, exits, then the next
+    two stats checks come back offline and the URL gets removed from /incoming."""
+    mocker.patch("time.sleep")
+    mocker.patch("random.randint", return_value=0)
+    stream_watcher.retry_interval_seconds = 0
+    stream_watcher.storage.get_incoming_urls.return_value = ["https://twitch.tv/foo"]
+    # Iteration 1: live -> worker runs. Iteration 2: offline (count=1).
+    # Iteration 3: offline (count=2 -> delete).
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        side_effect=[
+            StreamInfoObject(is_live=True, stream_id="id", start_time="100"),
+            StreamInfoObject(is_live=False, scheduled_start_time=0.0),
+            StreamInfoObject(is_live=False, scheduled_start_time=0.0),
+        ],
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+
+    mock_worker_cls = mocker.patch("live_transcript_worker.stream_watcher.Worker")
+    mock_worker = mock_worker_cls.return_value
+
+    # 3 outer iterations + exit. Each iteration: while-top False, per-URL is_set
+    # False after schedule. The third iteration deletes via the offline branch
+    # (continue, no is_set check), so 5 False reads then a True at the top.
+    stream_watcher.stop_event.is_set.side_effect = [False, False, False, False, False, True]
+
+    stream_watcher.watcher_incoming("doki")
+
+    mock_worker.start.assert_called_once()
+    stream_watcher.storage.delete_incoming_url.assert_called_once_with("doki", "https://twitch.tv/foo")
+
+
 def test_processor(stream_watcher, mocker):
     mocker.patch("live_transcript_worker.stream_watcher.ProcessAudio")
 

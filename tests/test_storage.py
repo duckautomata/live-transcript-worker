@@ -281,6 +281,84 @@ def test_process_old_queue_files_bfs_uneven(mocker, tmp_path, mock_config):
     assert item.key == "test1" and item.id == 12
 
 
+def test_get_incoming_urls_success(storage, mocker):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(
+        status_code=200, json=lambda: {"urls": ["https://twitch.tv/foo", "https://youtube.com/watch?v=abc"]}
+    )
+
+    urls = storage.get_incoming_urls("doki")
+
+    assert urls == ["https://twitch.tv/foo", "https://youtube.com/watch?v=abc"]
+    args, _ = storage.session.get.call_args
+    assert args[0].endswith("/doki/incoming")
+
+
+def test_get_incoming_urls_empty(storage):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(status_code=200, json=lambda: {"urls": []})
+
+    assert storage.get_incoming_urls("doki") == []
+
+
+def test_get_incoming_urls_403(storage):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(status_code=403, text="forbidden")
+
+    assert storage.get_incoming_urls("doki") == []
+
+
+def test_get_incoming_urls_404(storage):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(status_code=404, text="not found")
+
+    assert storage.get_incoming_urls("typo") == []
+
+
+def test_get_incoming_urls_disabled(storage):
+    storage._Storage__enable_request = False
+    # Should not even hit the network.
+    storage.session = MagicMock()
+    storage.session.get.side_effect = AssertionError("should not be called")
+
+    assert storage.get_incoming_urls("doki") == []
+
+
+def test_delete_incoming_url_success(storage):
+    storage.session = MagicMock()
+    storage.session.delete.return_value = MagicMock(status_code=204)
+
+    assert storage.delete_incoming_url("doki", "https://twitch.tv/foo") is True
+    args, kwargs = storage.session.delete.call_args
+    assert args[0].endswith("/doki/incoming")
+    # requests will URL-encode via params= when serializing the request.
+    assert kwargs["params"] == {"url": "https://twitch.tv/foo"}
+
+
+def test_delete_incoming_url_already_gone(storage):
+    """A 404 means the URL is not (or no longer) in the queue. The DELETE is
+    idempotent on the server side, so we treat this as a success."""
+    storage.session = MagicMock()
+    storage.session.delete.return_value = MagicMock(status_code=404, text="not found")
+
+    assert storage.delete_incoming_url("doki", "https://twitch.tv/foo") is True
+
+
+def test_delete_incoming_url_403(storage):
+    storage.session = MagicMock()
+    storage.session.delete.return_value = MagicMock(status_code=403, text="forbidden")
+
+    assert storage.delete_incoming_url("doki", "https://twitch.tv/foo") is False
+
+
+def test_delete_incoming_url_disabled(storage):
+    storage._Storage__enable_request = False
+    storage.session = MagicMock()
+    storage.session.delete.side_effect = AssertionError("should not be called")
+
+    assert storage.delete_incoming_url("doki", "https://twitch.tv/foo") is True
+
+
 def test_process_old_queue_files_empty(mocker, mock_config, tmp_path):
     # Reset singleton
     Storage._instances = {}

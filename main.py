@@ -70,6 +70,9 @@ def main():
     app_logger.info(f"Built On: {build_date}")
 
     stream_watcher = StreamWatcher()
+    incoming_mode = stream_watcher.incoming_polling_enabled
+    if incoming_mode:
+        app_logger.info("Incoming-queue mode enabled. Polling server's /incoming for URLs (streamers.urls is ignored)")
     streamers = Config.get_all_streamers_config()
     for streamer in streamers:
         key = streamer["key"]
@@ -78,7 +81,10 @@ def main():
         media_type = streamer["media_type"]
         app_logger.info(f"[{key}] loaded profile config. Active::{active} Media::{media_type}")
         if active:
-            stream_watcher.add(key, urls)
+            if incoming_mode:
+                stream_watcher.add_incoming(key)
+            else:
+                stream_watcher.add(key, urls)
 
     stream_watcher.start()
 
