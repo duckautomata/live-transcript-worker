@@ -359,6 +359,77 @@ def test_delete_incoming_url_disabled(storage):
     assert storage.delete_incoming_url("doki", "https://twitch.tv/foo") is True
 
 
+def test_is_restart_requested_pending(storage):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(status_code=200, json=lambda: {"pending": True, "requestedAt": 1700000000})
+
+    assert storage.is_restart_requested("doki") is True
+    args, _ = storage.session.get.call_args
+    assert args[0].endswith("/doki/restart")
+
+
+def test_is_restart_requested_not_pending(storage):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(status_code=200, json=lambda: {"pending": False})
+
+    assert storage.is_restart_requested("doki") is False
+
+
+def test_is_restart_requested_403(storage):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(status_code=403, text="forbidden")
+
+    assert storage.is_restart_requested("doki") is False
+
+
+def test_is_restart_requested_404(storage):
+    storage.session = MagicMock()
+    storage.session.get.return_value = MagicMock(status_code=404, text="not found")
+
+    assert storage.is_restart_requested("typo") is False
+
+
+def test_is_restart_requested_disabled(storage):
+    storage._Storage__enable_request = False
+    storage.session = MagicMock()
+    storage.session.get.side_effect = AssertionError("should not be called")
+
+    assert storage.is_restart_requested("doki") is False
+
+
+def test_delete_restart_request_success(storage):
+    storage.session = MagicMock()
+    storage.session.delete.return_value = MagicMock(status_code=204)
+
+    assert storage.delete_restart_request("doki") is True
+    args, _ = storage.session.delete.call_args
+    assert args[0].endswith("/doki/restart")
+
+
+def test_delete_restart_request_already_gone(storage):
+    """A 404 means the server had nothing to clear — DELETE is idempotent there,
+    so we treat it as a success."""
+    storage.session = MagicMock()
+    storage.session.delete.return_value = MagicMock(status_code=404, text="not found")
+
+    assert storage.delete_restart_request("doki") is True
+
+
+def test_delete_restart_request_403(storage):
+    storage.session = MagicMock()
+    storage.session.delete.return_value = MagicMock(status_code=403, text="forbidden")
+
+    assert storage.delete_restart_request("doki") is False
+
+
+def test_delete_restart_request_disabled(storage):
+    storage._Storage__enable_request = False
+    storage.session = MagicMock()
+    storage.session.delete.side_effect = AssertionError("should not be called")
+
+    assert storage.delete_restart_request("doki") is True
+
+
 def test_process_old_queue_files_empty(mocker, mock_config, tmp_path):
     # Reset singleton
     Storage._instances = {}

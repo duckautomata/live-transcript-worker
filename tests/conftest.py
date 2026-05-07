@@ -45,7 +45,11 @@ def mock_storage(mocker):
 
     # We will patch the imported class in the modules where it is used usually.
     # But for a general fixture, let's try to patch the class in storage.py
-    return mocker.patch("live_transcript_worker.storage.Storage")
+    storage = mocker.patch("live_transcript_worker.storage.Storage")
+    # Default the restart-poller's signal to "no restart pending" so it doesn't
+    # trigger spurious aborts in tests that don't care about the restart feature.
+    storage.is_restart_requested.return_value = False
+    return storage
 
 
 @pytest.fixture

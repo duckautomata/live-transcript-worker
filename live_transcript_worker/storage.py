@@ -308,6 +308,67 @@ class Storage(metaclass=SingletonMeta):
 
         return False
 
+    def is_restart_requested(self, key: str) -> bool:
+        """Polls the server's /{key}/restart endpoint for a pending restart request.
+        Returns True when the operator has POSTed a restart for this key, False
+        otherwise (including disabled requests, network errors, 403/404, or no
+        pending request).
+        """
+        if not self.__enable_request:
+            return False
+
+        start_time = time.time()
+        try:
+            response = self.session.get(
+                f"{self.__base_url_session}/{key}/restart",
+                timeout=(5, 10),
+            )
+            elapsed = time.time() - start_time
+            if response.status_code == 200:
+                return bool(response.json().get("pending", False))
+            elif response.status_code == 403:
+                logger.error(f"[{key}][is_restart_requested][{elapsed:.3f}] 403 forbidden — check apiKey in config")
+            elif response.status_code == 404:
+                logger.error(f"[{key}][is_restart_requested][{elapsed:.3f}] 404 not found — '{key}' is not configured on the server")
+            else:
+                logger.warning(f"[{key}][is_restart_requested][{elapsed:.3f}] unexpected response: {response.status_code} {response.text}")
+        except requests.RequestException as e:
+            logger.error(f"[{key}][is_restart_requested] request error: {e}")
+
+        return False
+
+    def delete_restart_request(self, key: str) -> bool:
+        """Clears the server's pending restart for this key after the worker has
+        acknowledged it. The server treats this DELETE as idempotent; 404 means
+        there was nothing to clear and is not an error.
+
+        Per the server contract, if a fresh POST races between our GET and this
+        DELETE, the DELETE wins — operators can re-POST if their signal is lost.
+        """
+        if not self.__enable_request:
+            return True
+
+        start_time = time.time()
+        try:
+            response = self.session.delete(
+                f"{self.__base_url_session}/{key}/restart",
+                timeout=(5, 10),
+            )
+            elapsed = time.time() - start_time
+            if response.status_code in (200, 204, 404):
+                logger.info(f"[{key}][delete_restart_request][{elapsed:.3f}] cleared")
+                return True
+            if response.status_code == 403:
+                logger.error(f"[{key}][delete_restart_request][{elapsed:.3f}] 403 forbidden — check apiKey in config")
+            else:
+                logger.warning(
+                    f"[{key}][delete_restart_request][{elapsed:.3f}] unexpected response: {response.status_code} {response.text}"
+                )
+        except requests.RequestException as e:
+            logger.error(f"[{key}][delete_restart_request] request error: {e}")
+
+        return False
+
     def sync_server(self, key: str, data):
         """Called when the server is out of sync and we need to reset the servers state.
         This will send the entire current state to the server. Forcing it to reset to it.

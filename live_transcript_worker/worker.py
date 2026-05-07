@@ -3,10 +3,10 @@ import logging
 import os
 import time
 from queue import Queue
-from threading import Event
 
 from live_transcript_worker.config import Config
 from live_transcript_worker.custom_types import StreamInfoObject
+from live_transcript_worker.worker_abstract import StopEventLike
 from live_transcript_worker.worker_buffered import MPEGBufferedWorker
 from live_transcript_worker.worker_dash import DASHWorker
 from live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
@@ -23,7 +23,7 @@ class Worker:
     On start(), it will determine which concrete worker to use.
     """
 
-    def __init__(self, key: str, queue: Queue, stop_event: Event):
+    def __init__(self, key: str, queue: Queue, stop_event: StopEventLike):
         self.key = key
         self.mpeg_fixed_bitrate_worker = MPEGFixedBitrateWorker(key, queue, stop_event)
         self.mpeg_buffered_worker = MPEGBufferedWorker(key, queue, stop_event)
