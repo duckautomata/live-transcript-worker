@@ -55,25 +55,19 @@ class StreamHelper:
         return re.sub(pattern, "", title).strip()
 
     @staticmethod
-    def _sanitize_url_for_filename(url: str) -> str:
-        """Maps a URL to a filesystem-safe identifier used for per-URL debug logs."""
-        sanitized = re.sub(r"[^A-Za-z0-9]+", "_", url).strip("_")
-        return sanitized[:150] or "unknown"
-
-    @staticmethod
     def _dump_stream_stats_debug(key: str, url: str, returncode: int | None, stdout: str, stderr: str) -> None:
         """Appends the raw yt-dlp metadata response (or error output) to
-        tmp/{key}/stream_stats/{sanitized_url}.log for debugging. One file per URL so
-        different URLs in the same key don't clobber each other; appended so retries
-        of the same URL stay visible. Trimmed to the trailing ~250KB once the file
-        exceeds 1MB to keep recent history without growing unbounded."""
+        tmp/{key}/stream_stats.log for debugging. The URL is included inline
+        in each entry so chronological history across all URLs is grep-able.
+        Trimmed to the trailing ~250KB once the file exceeds 1MB to keep recent
+        history without growing unbounded."""
         if not key:
             return
         try:
             project_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            debug_dir = os.path.join(project_root_dir, "tmp", key, "stream_stats")
-            os.makedirs(debug_dir, exist_ok=True)
-            debug_path = os.path.join(debug_dir, f"{StreamHelper._sanitize_url_for_filename(url)}.log")
+            key_dir = os.path.join(project_root_dir, "tmp", key)
+            os.makedirs(key_dir, exist_ok=True)
+            debug_path = os.path.join(key_dir, "stream_stats.log")
 
             max_bytes = 1_048_576
             keep_bytes = 262_144

@@ -14,6 +14,21 @@ from live_transcript_worker.worker import Worker
 logger = logging.getLogger(__name__)
 
 
+class _CompositeStopEvent:
+    """Event-like wrapper that reports is_set() True if any of its component
+    events are set. Workers (and their downloader threads) only call is_set() on
+    their stop_event, so we don't need to implement set/clear/wait — that lets us
+    OR the global stop_event with a per-key restart_event without touching the
+    worker classes.
+    """
+
+    def __init__(self, *events: Event):
+        self._events: tuple[Event, ...] = events
+
+    def is_set(self) -> bool:
+        return any(e.is_set() for e in self._events)
+
+
 class StreamWatcher:
     """
     Main live-transcript class.
@@ -51,6 +66,13 @@ class StreamWatcher:
         self.process_thread = Thread(target=self.processor, daemon=True)
         self.watcher_threads: list[Thread] = []
 
+        # Per-key restart events. Set by the background restart-poller thread
+        # when the operator POSTs to /{key}/restart on the server, and read by
+        # the watcher (via _CompositeStopEvent) so the running Worker aborts.
+        # Pre-allocated by add()/add_incoming() so tests can inject one before
+        # calling the watcher method directly.
+        self._restart_events: dict[str, Event] = {}
+
     def add(self, key: str, urls: list[str]):
         """Creates a watcher for this key.
 
@@ -59,6 +81,7 @@ class StreamWatcher:
             urls (list[str]): List of urls to watch.
         """
         # We use a daemon do that it is automatically killed when the main program exits
+        self._restart_events.setdefault(key, Event())
         new_thread = Thread(target=self.watcher, args=((key, urls)), daemon=True)
         self.watcher_threads.append(new_thread)
         self.storage.create_paths(key)
@@ -72,6 +95,7 @@ class StreamWatcher:
         Args:
             key (str): Key must match the servers key.
         """
+        self._restart_events.setdefault(key, Event())
         new_thread = Thread(target=self.watcher_incoming, args=(key,), daemon=True)
         self.watcher_threads.append(new_thread)
         self.storage.create_paths(key)
@@ -112,12 +136,25 @@ class StreamWatcher:
         Each url has its own next_check time so a YouTube channel with a stream
         scheduled hours out can sleep without starving a Twitch url in the same
         key, which has no schedule and must be polled on the regular cadence.
+
+        Also runs a background restart poller to detect when the server wants the worker to restart.
         """
         logger.info(f"[{key}][watcher] starting thread")
-        worker = Worker(key, self.processing_queue, self.stop_event)
+        restart_event = self._restart_events.setdefault(key, Event())
+        composite_stop = _CompositeStopEvent(self.stop_event, restart_event)
+        worker = Worker(key, self.processing_queue, composite_stop)
+        Thread(target=self._restart_poller, args=(key, restart_event), daemon=True).start()
+
         last_stream_id = ""
         next_url_checks: dict[str, float] = dict.fromkeys(urls, 0.0)
         while not self.stop_event.is_set():
+            if restart_event.is_set():
+                self._handle_restart(key, last_stream_id, restart_event)
+                last_stream_id = ""
+                # Re-check every URL immediately on the next iteration.
+                next_url_checks = dict.fromkeys(urls, 0.0)
+                continue
+
             soonest = min(next_url_checks.values()) if next_url_checks else time.time()
             if time.time() < soonest:
                 time.sleep(1)
@@ -141,6 +178,11 @@ class StreamWatcher:
                     last_stream_id = info.stream_id
                     worker.start(info)
                     self.storage.deactivate(key, info.stream_id)
+
+                    # If the worker exited because of a restart request, bail out
+                    # of this for-loop so the while-top can reset state cleanly.
+                    if restart_event.is_set():
+                        break
 
                 # Default to short retry; extend for scheduled or offline urls.
                 now = time.time()
@@ -185,9 +227,15 @@ class StreamWatcher:
         INCOMING_OFFLINE_DELETE_THRESHOLD times in a row — the latter lets the
         worker recover when it loses connection mid-stream and the stream ends
         while the worker is offline.
+
+        Also runs a background restart poller to detect when the server wants the worker to restart.
         """
         logger.info(f"[{key}][watcher_incoming] starting thread")
-        worker = Worker(key, self.processing_queue, self.stop_event)
+        restart_event = self._restart_events.setdefault(key, Event())
+        composite_stop = _CompositeStopEvent(self.stop_event, restart_event)
+        worker = Worker(key, self.processing_queue, composite_stop)
+        Thread(target=self._restart_poller, args=(key, restart_event), daemon=True).start()
+
         last_stream_id = ""
         # check time per URL; URLs at 0.0 are checked immediately on the next iteration.
         next_url_checks: dict[str, float] = {}
@@ -196,6 +244,14 @@ class StreamWatcher:
         next_incoming_poll = 0.0
 
         while not self.stop_event.is_set():
+            if restart_event.is_set():
+                self._handle_restart(key, last_stream_id, restart_event)
+                last_stream_id = ""
+                next_url_checks.clear()
+                offline_counts.clear()
+                next_incoming_poll = 0.0
+                continue
+
             # Refresh URL list from /incoming. New URLs are checked immediately.
             if time.time() >= next_incoming_poll:
                 incoming_urls = self.storage.get_incoming_urls(key)
@@ -233,6 +289,11 @@ class StreamWatcher:
                     worker.start(info)
                     self.storage.deactivate(key, info.stream_id)
 
+                    # If the worker exited because of a restart request, bail out
+                    # of this for-loop so the while-top can reset state cleanly.
+                    if restart_event.is_set():
+                        break
+
                 # Track confirmed-offline checks. Scheduled streams (YouTube "begins
                 # in X") aren't counted — they haven't started yet.
                 offline_check = not info.is_live and info.scheduled_start_time == 0
@@ -268,6 +329,45 @@ class StreamWatcher:
             time.sleep(0.5)
         logger.info(f"[{key}][watcher_incoming] out of loop stopping. Using last_stream_id to deactivate.")
         self.storage.deactivate(key, last_stream_id)
+
+    def _handle_restart(self, key: str, last_stream_id: str, restart_event: Event) -> None:
+        """Resets the watcher's per-key server state after a restart was signaled.
+        Called from the watcher loop's top-of-iteration check, once the running
+        Worker (if any) has already been aborted via the composite stop event and
+        the bg poller has cleared the server-side request.
+        """
+        logger.info(f"[{key}][watcher] handling restart request")
+        if last_stream_id:
+            self.storage.deactivate(key, last_stream_id)
+        restart_event.clear()
+
+    def _restart_poller(self, key: str, restart_event: Event) -> None:
+        """Background thread: polls the server's /{key}/restart endpoint at the
+        same cadence as /incoming. When a restart is pending, sets restart_event
+        (which causes the running Worker to exit via the composite stop event)
+        and DELETEs the server-side request so it isn't re-handled. The watcher
+        main loop is responsible for clearing restart_event after it has reset
+        its local state.
+
+        Skips polling while restart_event is already set — that means a previous
+        request is still being handled, so we shouldn't trigger again or wipe a
+        fresh POST.
+        """
+        interval = self.incoming_poll_interval_seconds
+        logger.debug(f"[{key}][restart_poller] starting (interval={interval}s)")
+        while not self.stop_event.is_set():
+            try:
+                if not restart_event.is_set() and self.storage.is_restart_requested(key):
+                    logger.info(f"[{key}][restart_poller] restart requested — aborting current stream")
+                    restart_event.set()
+                    self.storage.delete_restart_request(key)
+            except Exception as e:
+                logger.error(f"[{key}][restart_poller] error: {e}")
+            # Sleep with early-exit on stop. Event.wait returns True if the event
+            # was set (i.e. shutdown), in which case we exit the poller.
+            if self.stop_event.wait(interval):
+                return
+        logger.debug(f"[{key}][restart_poller] stopping")
 
     def processor(self):
         """

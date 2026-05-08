@@ -1,10 +1,11 @@
+from threading import Event
 from unittest.mock import MagicMock
 
 import pytest
 
 from live_transcript_worker.custom_types import Media, StreamInfoObject
 from live_transcript_worker.helper import StreamHelper
-from live_transcript_worker.stream_watcher import StreamWatcher
+from live_transcript_worker.stream_watcher import StreamWatcher, _CompositeStopEvent
 
 
 def _capture_debug_logs(mocker) -> list[str]:
@@ -21,6 +22,14 @@ def _capture_debug_logs(mocker) -> list[str]:
 def stream_watcher(mocker, mock_config, mock_storage):
     mocker.patch("live_transcript_worker.stream_watcher.Config", mock_config)
     mocker.patch("live_transcript_worker.stream_watcher.Storage", return_value=mock_storage)
+    # Don't actually spawn background threads (process_thread, watcher threads,
+    # restart-poller threads) during tests — they'd race with the test thread on
+    # mocked stop_event side_effects. Each Thread() call returns a fresh
+    # MagicMock so per-thread attributes like .start() can be set independently.
+    mocker.patch(
+        "live_transcript_worker.stream_watcher.Thread",
+        side_effect=lambda *a, **k: MagicMock(),
+    )
     sw = StreamWatcher()
     sw.stop_event = MagicMock()
     return sw
@@ -411,6 +420,154 @@ def test_watcher_incoming_deletes_after_worker_then_two_offline(stream_watcher, 
 
     mock_worker.start.assert_called_once()
     stream_watcher.storage.delete_incoming_url.assert_called_once_with("doki", "https://twitch.tv/foo")
+
+
+def test_composite_stop_event_or():
+    a, b = Event(), Event()
+    composite = _CompositeStopEvent(a, b)
+    assert composite.is_set() is False
+    a.set()
+    assert composite.is_set() is True
+    a.clear()
+    b.set()
+    assert composite.is_set() is True
+
+
+def test_watcher_incoming_handles_restart_when_idle(stream_watcher, mocker):
+    """If a restart is signaled while the watcher is idle (no live stream),
+    the event is cleared on the next loop iteration without calling deactivate
+    via the restart-handling path (last_stream_id is empty)."""
+    mocker.patch("time.sleep")
+    stream_watcher.storage.get_incoming_urls.return_value = []
+    mocker.patch("live_transcript_worker.stream_watcher.Worker")
+
+    # Pre-populate the restart event so the watcher sees it on the first iteration.
+    restart_event = Event()
+    restart_event.set()
+    stream_watcher._restart_events["doki"] = restart_event
+
+    # 1st outer: while-top False, hits restart branch -> continue. 2nd outer: True -> exit.
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+
+    stream_watcher.watcher_incoming("doki")
+
+    # _handle_restart cleared the event and the loop didn't re-enter the body.
+    assert restart_event.is_set() is False
+
+
+def test_watcher_incoming_aborts_running_stream_on_restart(stream_watcher, mocker):
+    """The composite stop event passed to Worker must OR stop_event with the
+    per-key restart_event — so Worker.is_set() reads True as soon as restart
+    fires, even though stop_event is still False. After the worker exits, the
+    watcher deactivates the stream and clears the event."""
+    mocker.patch("time.sleep")
+
+    restart_event = Event()
+    stream_watcher._restart_events["doki"] = restart_event
+
+    stream_watcher.storage.get_incoming_urls.return_value = ["https://twitch.tv/foo"]
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=True, stream_id="id", start_time="100"),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+
+    mock_worker_cls = mocker.patch("live_transcript_worker.stream_watcher.Worker")
+    mock_worker = mock_worker_cls.return_value
+
+    def fake_start(info):
+        # Simulate the bg poller firing while the worker is running.
+        restart_event.set()
+
+    mock_worker.start.side_effect = fake_start
+
+    # 1st outer: while-top False -> run worker (sets restart). break out of for-loop
+    # after the live branch, no per-URL is_set check. 2nd outer: while-top False ->
+    # hits restart branch, continue. 3rd outer: True -> exit.
+    stream_watcher.stop_event.is_set.side_effect = [False, False, True]
+
+    stream_watcher.watcher_incoming("doki")
+
+    mock_worker.start.assert_called_once()
+    # Verify the composite event passed to Worker is the OR-wrapper. Workers only
+    # call is_set() so this guarantees they see restart_event firing.
+    composite_stop = mock_worker_cls.call_args.args[2]
+    assert isinstance(composite_stop, _CompositeStopEvent)
+    # Stream was deactivated at least once via _handle_restart's deactivate call.
+    stream_watcher.storage.deactivate.assert_any_call("doki", "id")
+    assert restart_event.is_set() is False
+
+
+def test_watcher_handles_restart_when_idle(stream_watcher, mocker):
+    """URL-mode watcher resets its per-URL check times on restart so each URL
+    is re-checked immediately."""
+    mocker.patch("time.sleep")
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=False, scheduled_start_time=0.0),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+    mocker.patch("live_transcript_worker.stream_watcher.Worker")
+
+    restart_event = Event()
+    restart_event.set()
+    stream_watcher._restart_events["doki"] = restart_event
+
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+
+    stream_watcher.watcher("doki", ["https://twitch.tv/foo"])
+
+    assert restart_event.is_set() is False
+
+
+def test_restart_poller_sets_event_and_deletes(stream_watcher, mocker):
+    """When the server reports a pending restart, the poller sets the local
+    event (so the running Worker aborts) and DELETEs the server-side request."""
+    restart_event = Event()
+    stream_watcher.storage.is_restart_requested.return_value = True
+    # Run one iteration of the poller, then exit via wait().
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+    stream_watcher.stop_event.wait.return_value = True
+
+    stream_watcher._restart_poller("doki", restart_event)
+
+    assert restart_event.is_set() is True
+    stream_watcher.storage.delete_restart_request.assert_called_once_with("doki")
+
+
+def test_restart_poller_skips_when_event_already_set(stream_watcher, mocker):
+    """If a previous restart is still being handled (event is set), the poller
+    should not re-trigger or wipe a fresh server-side POST."""
+    restart_event = Event()
+    restart_event.set()
+    # The storage call shouldn't even be made.
+    stream_watcher.storage.is_restart_requested.side_effect = AssertionError("should not be polled")
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+    stream_watcher.stop_event.wait.return_value = True
+
+    stream_watcher._restart_poller("doki", restart_event)
+
+    stream_watcher.storage.delete_restart_request.assert_not_called()
+
+
+def test_restart_poller_no_action_when_not_pending(stream_watcher, mocker):
+    """When no restart is pending, the poller waits for the next interval and
+    leaves the event alone."""
+    restart_event = Event()
+    stream_watcher.storage.is_restart_requested.return_value = False
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+    stream_watcher.stop_event.wait.return_value = True
+
+    stream_watcher._restart_poller("doki", restart_event)
+
+    assert restart_event.is_set() is False
+    stream_watcher.storage.delete_restart_request.assert_not_called()
 
 
 def test_processor(stream_watcher, mocker):

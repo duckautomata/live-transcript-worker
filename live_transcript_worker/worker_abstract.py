@@ -1,10 +1,18 @@
 import os
 from abc import ABC, abstractmethod
 from queue import Queue
-from threading import Event
+from typing import Protocol
 
 from live_transcript_worker.config import Config
 from live_transcript_worker.custom_types import StreamInfoObject
+
+
+class StopEventLike(Protocol):
+    """The subset of threading.Event that the workers actually use — just
+    is_set(). Lets callers pass either a real Event or a composite OR-wrapper
+    (e.g. StreamWatcher's stop+restart wrapper) without changing worker code."""
+
+    def is_set(self) -> bool: ...
 
 
 class AbstractWorker(ABC):
@@ -12,7 +20,7 @@ class AbstractWorker(ABC):
     Abstract Class used to work on a specific url
     """
 
-    def __init__(self, key: str, queue: Queue, stop_event: Event):
+    def __init__(self, key: str, queue: Queue, stop_event: StopEventLike):
         self.key = key
         self.queue = queue
         self.stop_event = stop_event

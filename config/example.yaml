@@ -19,10 +19,12 @@ server:
 
   # If enabled, the worker ignores each streamer's static `urls` list and
   # instead polls the server's /{key}/incoming endpoint for URLs queued by the
-  # announcement bot.
+  # announcement bot. URLs are deleted from the server after the stream ends,
+  # or after two consecutive "offline" stats checks (so the worker recovers
+  # cleanly if it loses connection mid-stream).
   incoming_polling:
     enabled: false
-    # How often the worker polls /{key}/incoming for new URLs (seconds).
+    # How often the worker polls the server.
     interval_seconds: 30
 
   # How often the watcher polls each url to check if a stream is live.
