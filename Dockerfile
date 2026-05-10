@@ -36,12 +36,24 @@ RUN echo "Installing Deno ${DENO_VERSION}" && \
     rm /tmp/deno.zip && \
     chmod a+rx /usr/local/bin/deno
 
-# Install yt-dlp binary
+# Install yt-dlp binary (used by every worker except SABRWorker)
 ARG YTDLP_VERSION="unknown"
 RUN echo "Installing yt-dlp ${YTDLP_VERSION}" && \
     curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" \
          -o /app/bin/yt-dlp && \
     chmod a+rx /app/bin/yt-dlp
+
+# Install yt-dlp-sabr binary (used only by SABRWorker; provides the SABR
+# live-from-start downloader that upstream yt-dlp doesn't ship yet).
+# Pinned because the fork's release cadence is decoupled from upstream and
+# new tags may require corresponding code changes in worker_sabr.py.
+# This default is the single source of truth — scripts/setup.sh and the
+# deploy workflows derive their version from it.
+ARG SABR_YTDLP_VERSION="v2026.05.08-sabr"
+RUN echo "Installing yt-dlp-sabr ${SABR_YTDLP_VERSION}" && \
+    curl -L "https://github.com/duckautomata/yt-dlp-sabr/releases/download/${SABR_YTDLP_VERSION}/yt-dlp" \
+         -o /app/bin/yt-dlp-sabr && \
+    chmod a+rx /app/bin/yt-dlp-sabr
 
 # Copy application files
 COPY main.py main.py

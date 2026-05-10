@@ -8,9 +8,9 @@ from live_transcript_worker.config import Config
 from live_transcript_worker.custom_types import StreamInfoObject
 from live_transcript_worker.worker_abstract import StopEventLike
 from live_transcript_worker.worker_buffered import MPEGBufferedWorker
-from live_transcript_worker.worker_dash import DASHWorker
 from live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
 from live_transcript_worker.worker_live_segment import LiveSegmentWorker
+from live_transcript_worker.worker_sabr import SABRWorker
 from live_transcript_worker.worker_twitch_lfs import TwitchLFSWorker
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class Worker:
         self.key = key
         self.mpeg_fixed_bitrate_worker = MPEGFixedBitrateWorker(key, queue, stop_event)
         self.mpeg_buffered_worker = MPEGBufferedWorker(key, queue, stop_event)
-        self.dash_worker = DASHWorker(key, queue, stop_event)
+        self.sabr_worker = SABRWorker(key, queue, stop_event)
         self.twitch_lfs_worker = TwitchLFSWorker(key, queue, stop_event)
         self.live_segment_worker = LiveSegmentWorker(key, queue, stop_event)
 
@@ -55,8 +55,8 @@ class Worker:
     # Slow worker / gap detection
     # ------------------------------------------------------------------
 
-    def _dash_state_path(self) -> str:
-        return os.path.join(_PROJECT_ROOT, "tmp", self.key, "dash_state.json")
+    def _sabr_state_path(self) -> str:
+        return os.path.join(_PROJECT_ROOT, "tmp", self.key, "sabr_state.json")
 
     def _get_gap_seconds(self, info: StreamInfoObject, is_youtube: bool) -> float | None:
         """Returns the gap in seconds between where the worker would resume and live.
@@ -70,7 +70,7 @@ class Worker:
 
         if is_youtube:
             # Check if we have saved state for this stream (resuming)
-            state_path = self._dash_state_path()
+            state_path = self._sabr_state_path()
             if os.path.exists(state_path):
                 try:
                     with open(state_path) as f:
@@ -150,15 +150,15 @@ class Worker:
         if gap_seconds is not None and gap_seconds > lfs_gap_seconds:
             logger.warning(
                 f"[{self.key}][Worker] YouTube stream is {gap_seconds / 60:.1f} minutes behind live "
-                f"(threshold: {lfs_gap_seconds / 60:.1f} min). Using LiveSegmentWorker instead of DASHWorker."
+                f"(threshold: {lfs_gap_seconds / 60:.1f} min). Using LiveSegmentWorker instead of SABRWorker."
             )
             self.live_segment_worker.start(info)
             return
 
-        self.dash_worker.start(info)
+        self.sabr_worker.start(info)
 
         # If the worker fell behind during processing, switch to LiveSegmentWorker
-        if self.dash_worker.is_slow:
-            logger.info(f"[{self.key}][Worker] DASHWorker fell behind, switching to LiveSegmentWorker")
-            self.dash_worker.is_slow = False
+        if self.sabr_worker.is_slow:
+            logger.info(f"[{self.key}][Worker] SABRWorker fell behind, switching to LiveSegmentWorker")
+            self.sabr_worker.is_slow = False
             self.live_segment_worker.start(info)
