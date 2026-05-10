@@ -35,12 +35,6 @@ class StreamWatcher:
     Handles waiting for a stream to start, downloads audio, transcribes audio, then uploads result to server.
     """
 
-    # Number of consecutive "offline" stream-stats results that cause a URL to be
-    # removed from the server's /incoming queue. Lets the worker resume cleanly
-    # after a connection loss: a stream that has truly ended will read offline on
-    # both checks and get cleaned up.
-    INCOMING_OFFLINE_DELETE_THRESHOLD = 2
-
     def __init__(self):
         channel_polling = Config.get_server_config().get("channel_polling", {}) or {}
         self.retry_interval_seconds: int = channel_polling.get("interval_seconds", 60)
@@ -50,6 +44,11 @@ class StreamWatcher:
         incoming_polling = Config.get_server_config().get("incoming_polling", {}) or {}
         self.incoming_polling_enabled: bool = incoming_polling.get("enabled", False)
         self.incoming_poll_interval_seconds: int = incoming_polling.get("interval_seconds", 30)
+        # Number of consecutive "offline" stream-stats results that cause a URL to be
+        # removed from the server's /incoming queue. Lets the worker resume cleanly
+        # after a connection loss: a stream that has truly ended will read offline on
+        # the configured number of checks and get cleaned up.
+        self.incoming_offline_delete_threshold: int = incoming_polling.get("offline_delete_threshold", 2)
         # Used to tell the threads when to stop. Used on shutdown.
         self.stop_event = Event()
 
@@ -224,7 +223,7 @@ class StreamWatcher:
 
         URLs are removed from the server queue once they've been processed (after
         the stream ends and is deactivated) or once they've been confirmed offline
-        INCOMING_OFFLINE_DELETE_THRESHOLD times in a row — the latter lets the
+        incoming_offline_delete_threshold times in a row — the latter lets the
         worker recover when it loses connection mid-stream and the stream ends
         while the worker is offline.
 
@@ -299,7 +298,7 @@ class StreamWatcher:
                 offline_check = not info.is_live and info.scheduled_start_time == 0
                 if offline_check and not blacklisted:
                     offline_counts[url] = offline_counts.get(url, 0) + 1
-                    if offline_counts[url] >= self.INCOMING_OFFLINE_DELETE_THRESHOLD:
+                    if offline_counts[url] >= self.incoming_offline_delete_threshold:
                         logger.info(f"[{key}][watcher_incoming] {url} confirmed offline {offline_counts[url]}x; removing from /incoming")
                         self.storage.delete_incoming_url(key, url)
                         next_url_checks.pop(url, None)

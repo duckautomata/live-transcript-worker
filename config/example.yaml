@@ -17,6 +17,9 @@ server:
   # How long each line will be in seconds
   buffer_size_seconds: 6
 
+  # YouTube only. If true, uses DASH when lfs is enabled. Else, use LiveSegmentWorker.
+  use_dash_for_youtube: true
+
   # If enabled, the worker ignores each streamer's static `urls` list and
   # instead polls the server's /{key}/incoming endpoint for URLs queued by the
   # announcement bot. URLs are deleted from the server after the stream ends,
@@ -26,6 +29,8 @@ server:
     enabled: false
     # How often the worker polls the server.
     interval_seconds: 30
+    # Number of consecutive "offline" stream-stats results before the URL is removed from /incoming
+    offline_delete_threshold: 2
 
   # How often the watcher polls each url to check if a stream is live.
   channel_polling:

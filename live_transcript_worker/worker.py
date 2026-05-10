@@ -91,6 +91,7 @@ class Worker:
 
     def start(self, info: StreamInfoObject):
         live_from_start = Config.get_streamer_config(self.key).get("live_from_start", True)
+        use_dash_for_youtube = Config.get_server_config().get("use_dash_for_youtube", False)
 
         url = info.url.lower()
         is_twitch = "twitch.tv" in url
@@ -101,8 +102,11 @@ class Worker:
             self.live_segment_worker.start(info)
         elif is_twitch:
             self._start_twitch(info)
-        elif is_youtube:
+        elif is_youtube and use_dash_for_youtube:
             self._start_youtube(info)
+        elif is_youtube:
+            logger.info(f"[{self.key}][Worker] YouTube with use_dash_for_youtube=false, using LiveSegmentWorker")
+            self.live_segment_worker.start(info)
         else:
             logger.info(f"[{self.key}][Worker] Non-Twitch/YouTube URL with live_from_start=true, using LiveSegmentWorker")
             self.live_segment_worker.start(info)
