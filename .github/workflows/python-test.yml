@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -27,7 +29,16 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install Dependencies
-        run: uv sync --all-extras --dev
+        # --locked: fail if uv.lock is out of sync with pyproject.toml.
+        # Prevents a tampered/edited pyproject.toml from silently re-resolving.
+        run: uv sync --all-extras --dev --locked
+
+      - name: Audit Dependencies for Known Vulnerabilities
+        # Audits the resolved production set against the PyPI advisory DB / OSV.
+        # Runs on every PR so a transitive CVE blocks merge.
+        run: |
+          uv export --frozen --no-emit-project --no-dev --format requirements-txt -o /tmp/requirements-prod.txt
+          uvx pip-audit --disable-pip -r /tmp/requirements-prod.txt
 
       - name: Code Quality Checks
         run: |
