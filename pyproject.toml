@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "faster-whisper>=1.2.1",
     "pyyaml>=6.0.3",
-    "requests>=2.34.0",
+    "requests>=2.34.2",
 ]
 
 [dependency-groups]
@@ -15,7 +15,7 @@ dev = [
     "pyrefly>=0.64.1",
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.15.1",
-    "ruff>=0.15.12",
+    "ruff>=0.15.13",
     "types-pyyaml>=6.0.12.20260510",
 ]
 
