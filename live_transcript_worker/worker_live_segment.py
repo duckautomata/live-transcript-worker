@@ -22,9 +22,13 @@ class LiveSegmentWorker(AbstractWorker):
 
     Unlike TwitchLFSWorker, this worker joins the stream at the live edge
     (no --live-from-start), so there is no complete buffer of the full stream.
-    Timestamps are approximated: audio_start_time is set to the wall-clock time
-    when the first segment is ready, and each subsequent segment advances by its
-    measured duration.
+    Timestamps are approximated from each segment file's modification time:
+    ffmpeg stamps a segment when it finishes writing it, so the mtime marks when
+    that content was ingested, regardless of when this worker reads the file.
+    Each segment is anchored independently to its own production time
+    (mtime - duration - live_latency). This stays correct even when the monitor
+    drains a backlog faster than real time, and self-heals after an upstream
+    stall or reconnect instead of drifting permanently behind live.
 
     Supports VIDEO (video+audio mux) or AUDIO-only streams depending on
     info.media_type.
@@ -75,9 +79,6 @@ class LiveSegmentWorker(AbstractWorker):
         ffmpeg_proc: subprocess.Popen,
     ):
         next_seq = 0
-        # Timestamp is approximated from wall-clock time at the moment the
-        # first segment is emitted. This anchors us to roughly the live edge.
-        audio_start_time: float | None = None
 
         while not self.stop_event.is_set():
             seg_path = self._seg_path(segment_dir, next_seq)
@@ -88,15 +89,13 @@ class LiveSegmentWorker(AbstractWorker):
             seg_ready = os.path.exists(seg_path) and (os.path.exists(next_seg_path) or both_done)
 
             if seg_ready:
-                # Anchor timestamp to wall clock on the first segment,
-                # compensating for the segment buffer and platform latency.
-                if audio_start_time is None:
-                    audio_start_time = time.time() - self.buffer_size_seconds - self.live_latency_seconds
-                    logger.debug(f"[{info.key}][LiveSegmentWorker] Anchoring timestamp to {audio_start_time:.3f}")
-
                 try:
                     with open(seg_path, "rb") as f:
                         data = f.read()
+                        # ffmpeg stamps a segment's mtime when it finishes writing
+                        # it, i.e. when the content at the end of the segment was
+                        # ingested. Read it from the open handle, before removal.
+                        seg_mtime = os.fstat(f.fileno()).st_mtime
                 except Exception as e:
                     logger.error(f"[{info.key}][LiveSegmentWorker] Failed to read segment {next_seq}: {e}")
                     next_seq += 1
@@ -107,6 +106,7 @@ class LiveSegmentWorker(AbstractWorker):
 
                 duration = StreamHelper.get_precise_duration(data)
                 if duration > 0 and data:
+                    audio_start_time = seg_mtime - duration - self.live_latency_seconds
                     process_obj = ProcessObject(
                         raw=data,
                         audio_start_time=audio_start_time,
@@ -116,7 +116,6 @@ class LiveSegmentWorker(AbstractWorker):
                     )
                     logger.debug(f"[{info.key}][LiveSegmentWorker] Queuing segment {next_seq}. Duration: {duration:.3f}s")
                     self.queue.put(process_obj)
-                    audio_start_time += duration
                 else:
                     logger.warning(f"[{info.key}][LiveSegmentWorker] Segment {next_seq} has no usable data, skipping.")
 
