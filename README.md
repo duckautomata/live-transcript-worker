@@ -127,7 +127,7 @@ If you wish to create more configuration files (example: dev.yaml), then you can
 
 ### Debugging/Logging
 
-Logging is set up for the entire program, and everything should be logged. The console will print info and higher logs (everything but debug). On startup, a log file under `tmp/` will be created and will contain every log. In the event of an error, check this log file to see what went wrong.
+Logging is set up for the entire program, and everything should be logged. The console will print info and higher logs (everything but debug). Every log is written to `tmp/_logs/app.log`, which persists across restarts. To keep disk usage bounded on long-running servers, the file is rotated once it reaches 1 MB: the 50 most recent rotated files are kept as `app.log.1` (newest) through `app.log.50` (oldest), and anything older is deleted. Each run is bracketed by `SERVER START` and `SERVER STOP` log lines, so search for those to find where the server restarted. In the event of an error, check these log files to see what went wrong.
 
 ### Updating Packages
 ```bash

@@ -3,7 +3,7 @@ import os
 import signal
 import sys
 import threading
-from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 from live_transcript_worker.config import Config
 from live_transcript_worker.status_reporter import StatusReporter
@@ -11,22 +11,30 @@ from live_transcript_worker.stream_watcher import StreamWatcher
 
 # Logger will be used for all modules under live_transcript_worker
 app_logger = logging.getLogger("live_transcript_worker")
-timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 project_root_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = os.path.join(project_root_dir, "tmp", f"{timestamp}.log")
+log_path = os.path.join(project_root_dir, "tmp", "_logs", "app.log")
+
+# Rotation keeps disk usage bounded on long-running servers: at most
+# LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1) across app.log and app.log.1..N
+LOG_MAX_BYTES = 1 * 1024 * 1024  # 1 MB per file
+LOG_BACKUP_COUNT = 50
 
 shutdown_event = threading.Event()
 
 
 def setup_logging():
-    """Logs to both console and file. Console is info and up only. File is debug and up."""
+    """Logs to both console and file. Console is info and up only. File is debug and up.
+
+    The file is rotated once it reaches LOG_MAX_BYTES, keeping LOG_BACKUP_COUNT
+    old files, so logs never grow unbounded while the server stays up.
+    """
     app_logger.setLevel(logging.DEBUG)
     app_logger.propagate = False
 
     # Check if handlers are already configured to prevent duplicates if setup_logging is called multiple times
     if not app_logger.handlers:
-        os.makedirs("tmp", exist_ok=True)
-        file_handler = logging.FileHandler(log_path, mode="w")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        file_handler = RotatingFileHandler(log_path, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT)
         file_handler.setLevel(logging.DEBUG)
         file_formatter = logging.Formatter("%(asctime)s %(levelname)-8s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
         file_handler.setFormatter(file_formatter)
@@ -105,7 +113,8 @@ def main():
 if __name__ == "__main__":
     handle_args()
     setup_logging()
-    app_logger.info(f"Creating log file for current run: '{log_path}'")
+    app_logger.info("========== SERVER START ==========")
+    app_logger.info(f"Logging to rotating log file: '{log_path}'")
     main()
-    app_logger.info("Goodbye")
+    app_logger.info("========== SERVER STOP ==========")
     print(f"log file can be found under: '{log_path}'", flush=True)
