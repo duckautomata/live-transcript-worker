@@ -25,6 +25,7 @@ class Worker:
 
     def __init__(self, key: str, queue: Queue, stop_event: StopEventLike):
         self.key = key
+        self.stop_event = stop_event
         self.mpeg_fixed_bitrate_worker = MPEGFixedBitrateWorker(key, queue, stop_event)
         self.mpeg_buffered_worker = MPEGBufferedWorker(key, queue, stop_event)
         self.dash_worker = DASHWorker(key, queue, stop_event)
@@ -125,8 +126,6 @@ class Worker:
             self.live_segment_worker.start(info)
             return
 
-        self._write_lfs_stream_id(info.stream_id)
-
         # Check if the gap from start to live is too large
         gap_seconds = self._get_gap_seconds(info, is_youtube=False)
         if gap_seconds is not None and gap_seconds > lfs_gap_seconds:
@@ -134,14 +133,26 @@ class Worker:
                 f"[{self.key}][Worker] Twitch stream is {gap_seconds / 60:.1f} minutes behind live "
                 f"(threshold: {lfs_gap_seconds / 60:.1f} min). Using LiveSegmentWorker instead of TwitchLFSWorker."
             )
+            # Deliberate downgrade for this stream id — persist it so a restart
+            # short-circuits straight to LiveSegmentWorker.
+            self._write_lfs_stream_id(info.stream_id)
             self.live_segment_worker.start(info)
             return
 
         logger.info(f"[{self.key}][Worker] Twitch new stream id '{info.stream_id}', using TwitchLFSWorker")
-        self.twitch_lfs_worker.start(info)
+        # Persist the stream id only once LFS produces its first segment (via the
+        # callback), so a fast --live-from-start failure stays retryable instead of
+        # being permanently downgraded to live-edge after capturing nothing.
+        self.twitch_lfs_worker.start(info, on_first_segment=lambda: self._write_lfs_stream_id(info.stream_id))
 
-        # If the worker fell behind during processing, switch to LiveSegmentWorker
-        if self.twitch_lfs_worker.is_slow:
+        if self.twitch_lfs_worker.segments_produced == 0:
+            # LFS captured nothing Fall back to LiveSegmentWorker now instead
+            # of dropping the stream for a full poll cycle. Skip during shutdown.
+            if not self.stop_event.is_set():
+                logger.warning(f"[{self.key}][Worker] TwitchLFSWorker produced no segments, falling back to LiveSegmentWorker")
+                self.live_segment_worker.start(info)
+        elif self.twitch_lfs_worker.is_slow:
+            # Captured from the start but then fell behind live — switch to LiveSegmentWorker.
             logger.info(f"[{self.key}][Worker] TwitchLFSWorker fell behind, switching to LiveSegmentWorker")
             self.twitch_lfs_worker.is_slow = False
             self.live_segment_worker.start(info)

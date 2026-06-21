@@ -16,7 +16,7 @@ log_path = os.path.join(project_root_dir, "tmp", "_logs", "app.log")
 
 # Rotation keeps disk usage bounded on long-running servers: at most
 # LOG_MAX_BYTES * (LOG_BACKUP_COUNT + 1) across app.log and app.log.1..N
-LOG_MAX_BYTES = 1 * 1024 * 1024  # 1 MB per file
+LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file
 LOG_BACKUP_COUNT = 50
 
 shutdown_event = threading.Event()
