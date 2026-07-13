@@ -27,10 +27,26 @@ server:
   # cleanly if it loses connection mid-stream).
   incoming_polling:
     enabled: false
-    # How often the worker polls the server.
+    # How often the worker polls the server. Only used as-is when
+    # events_polling is disabled; with events polling active this cadence is
+    # only used for the degraded rounds after a failed /events request.
     interval_seconds: 30
     # Number of consecutive "offline" stream-stats results before the URL is removed from /incoming
     offline_delete_threshold: 2
+
+  # Long-poll notifications. When enabled the worker holds a single GET /events
+  # request open against the server and reacts to queued URLs and restart
+  # requests within about a second, instead of waiting for the next interval
+  # poll. Fails back to the original incoming_polling.interval_seconds way.
+  events_polling:
+    enabled: true
+    # How long the server holds an idle /events request open before answering
+    # empty and the worker re-polls. Keep under any proxy idle timeout.
+    wait_seconds: 25
+    # Safety-net cadence for the regular /incoming refresh while events
+    # polling is active (replaces incoming_polling.interval_seconds).
+    # This will run the original poll JIC the events endpoint is not working.
+    fallback_interval_seconds: 300
 
   # How often the watcher polls each url to check if a stream is live.
   channel_polling:
