@@ -454,3 +454,53 @@ def test_process_old_queue_files_empty(mocker, mock_config, tmp_path):
     storage = Storage()
     storage._process_old_queue_files()
     assert storage._Storage__upload_queue.empty()
+
+
+def test_poll_events_success(storage):
+    storage.longpoll_session = MagicMock()
+    storage.longpoll_session.get.return_value = MagicMock(
+        status_code=200, json=lambda: {"cursor": 42, "events": {"doki": ["incoming", "restart"]}}
+    )
+
+    result = storage.poll_events(["doki", "mint"], 10, 25)
+
+    assert result == ({"doki": ["incoming", "restart"]}, 42)
+    args, kwargs = storage.longpoll_session.get.call_args
+    assert args[0].endswith("/events")
+    assert kwargs["params"] == {"channels": "doki,mint", "since": 10, "wait": 25}
+    # Read timeout must outlast the server-side hold.
+    assert kwargs["timeout"][1] > 25
+
+
+def test_poll_events_empty(storage):
+    """A 204 means nothing was pending; the cursor must not move."""
+    storage.longpoll_session = MagicMock()
+    storage.longpoll_session.get.return_value = MagicMock(status_code=204)
+
+    assert storage.poll_events(["doki"], 42, 25) == ({}, 42)
+
+
+def test_poll_events_unsupported_server(storage):
+    """A 404 (older server without /events) must return None so the caller
+    can fall back to interval polling."""
+    storage.longpoll_session = MagicMock()
+    storage.longpoll_session.get.return_value = MagicMock(status_code=404, text="not found")
+
+    assert storage.poll_events(["doki"], 0, 25) is None
+
+
+def test_poll_events_request_error(storage):
+    import requests
+
+    storage.longpoll_session = MagicMock()
+    storage.longpoll_session.get.side_effect = requests.ConnectionError("boom")
+
+    assert storage.poll_events(["doki"], 0, 25) is None
+
+
+def test_poll_events_disabled(storage):
+    storage._Storage__enable_request = False
+    storage.longpoll_session = MagicMock()
+    storage.longpoll_session.get.side_effect = AssertionError("should not be called")
+
+    assert storage.poll_events(["doki"], 0, 25) is None

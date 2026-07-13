@@ -368,8 +368,10 @@ def test_watcher_incoming_dedupes_urls_across_polls(stream_watcher, mocker):
     )
     mocker.patch("live_transcript_worker.stream_watcher.Worker")
 
-    # Force /incoming to be polled multiple times by setting interval to 0.
+    # Force /incoming to be polled multiple times by setting the intervals to 0
+    # (the fallback interval is the one used while events polling is enabled).
     stream_watcher.incoming_poll_interval_seconds = 0
+    stream_watcher.events_fallback_interval_seconds = 0
     stream_watcher.stop_event.is_set.side_effect = [False, False, False, False, True]
 
     info_logs: list[str] = []
@@ -600,3 +602,104 @@ def test_processor(stream_watcher, mocker):
     stream_watcher.processor()
 
     assert stream_watcher.processing_queue.empty()
+
+
+def test_events_listener_fans_out_flags(stream_watcher):
+    """A poll_events response with both flags must set the key's incoming
+    nudge and run the restart check+ack, exactly like the legacy pollers."""
+    stream_watcher.add_incoming("doki")
+    stream_watcher.storage.poll_events.return_value = ({"doki": ["incoming", "restart"]}, 42)
+    stream_watcher.storage.is_restart_requested.return_value = True
+
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+    stream_watcher.stop_event.wait.return_value = True  # exit at the post-events pause
+
+    stream_watcher._events_listener(["doki"])
+
+    assert stream_watcher._incoming_events["doki"].is_set()
+    assert stream_watcher._restart_events["doki"].is_set()
+    stream_watcher.storage.delete_restart_request.assert_called_with("doki")
+
+
+def test_events_listener_echoes_cursor(stream_watcher):
+    """The cursor from one response must be sent as `since` on the next poll
+    so already-reported incoming URLs aren't reported again."""
+    stream_watcher.add_incoming("doki")
+    stream_watcher.storage.poll_events.side_effect = [({}, 42), ({}, 99)]
+    stream_watcher.stop_event.is_set.side_effect = [False, False, True]
+
+    stream_watcher._events_listener(["doki"])
+
+    calls = stream_watcher.storage.poll_events.call_args_list
+    assert calls[0][0][1] == 0
+    assert calls[1][0][1] == 42
+
+
+def test_events_listener_degrades_when_events_unsupported(stream_watcher):
+    """When /events fails (older server, network error) the listener must do
+    one legacy polling round — restart check per key plus an incoming nudge —
+    and wait the legacy interval before retrying."""
+    stream_watcher.add_incoming("doki")
+    stream_watcher.storage.poll_events.return_value = None
+    stream_watcher.storage.is_restart_requested.return_value = False
+
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+    stream_watcher.stop_event.wait.return_value = True  # exit during the interval sleep
+
+    stream_watcher._events_listener(["doki"])
+
+    stream_watcher.storage.is_restart_requested.assert_called_with("doki")
+    assert stream_watcher._incoming_events["doki"].is_set()
+    stream_watcher.stop_event.wait.assert_called_with(stream_watcher.incoming_poll_interval_seconds)
+
+
+def test_events_listener_skips_restart_while_already_handling(stream_watcher):
+    """A restart flag arriving while the previous restart is still being
+    handled (restart_event still set) must not re-trigger or wipe the
+    server-side request."""
+    stream_watcher.add_incoming("doki")
+    stream_watcher._restart_events["doki"].set()
+    stream_watcher.storage.poll_events.return_value = ({"doki": ["restart"]}, 1)
+
+    stream_watcher.stop_event.is_set.side_effect = [False, True]
+    stream_watcher.stop_event.wait.return_value = True
+
+    stream_watcher._events_listener(["doki"])
+
+    stream_watcher.storage.is_restart_requested.assert_not_called()
+    stream_watcher.storage.delete_restart_request.assert_not_called()
+
+
+def test_watcher_incoming_refreshes_on_event_nudge(stream_watcher, mocker):
+    """An incoming_event nudge from the events listener must force an
+    immediate /incoming refresh even though the fallback interval is far off."""
+    mocker.patch("time.sleep")
+    stream_watcher.events_fallback_interval_seconds = 10_000
+    incoming_event = stream_watcher._incoming_events.setdefault("doki", Event())
+    stream_watcher.storage.get_incoming_urls.side_effect = [[], ["https://twitch.tv/foo"]]
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_stream_stats_until_valid_start",
+        return_value=StreamInfoObject(is_live=False, scheduled_start_time=0.0),
+    )
+    mocker.patch(
+        "live_transcript_worker.helper.StreamHelper.get_media_type",
+        return_value=Media.AUDIO,
+    )
+    mocker.patch("live_transcript_worker.stream_watcher.Worker")
+
+    # Loop passes: 1st fetches the (empty) queue, then the nudge lands during
+    # the 2nd while-top check, so the 2nd pass must refetch; stop on the 3rd.
+    calls = {"n": 0}
+
+    def is_set_side_effect():
+        calls["n"] += 1
+        if calls["n"] == 2:
+            incoming_event.set()
+        return calls["n"] >= 3
+
+    stream_watcher.stop_event.is_set.side_effect = is_set_side_effect
+
+    stream_watcher.watcher_incoming("doki")
+
+    assert stream_watcher.storage.get_incoming_urls.call_count == 2
+    assert not incoming_event.is_set(), "nudge must be cleared once consumed"

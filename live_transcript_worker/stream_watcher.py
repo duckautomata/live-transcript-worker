@@ -44,6 +44,16 @@ class StreamWatcher:
         incoming_polling = Config.get_server_config().get("incoming_polling", {}) or {}
         self.incoming_polling_enabled: bool = incoming_polling.get("enabled", False)
         self.incoming_poll_interval_seconds: int = incoming_polling.get("interval_seconds", 30)
+
+        # Long-poll notifications. When enabled, a single background thread
+        # holds a GET /events request open against the server and fans the
+        # returned signals out to the per-key events below, so new-stream and
+        # restart signals land in ~a second instead of a poll interval. The
+        # plain interval polls remain as a slow safety net.
+        events_polling = Config.get_server_config().get("events_polling", {}) or {}
+        self.events_enabled: bool = events_polling.get("enabled", True)
+        self.events_wait_seconds: int = events_polling.get("wait_seconds", 25)
+        self.events_fallback_interval_seconds: int = events_polling.get("fallback_interval_seconds", 300)
         # Number of consecutive "offline" stream-stats results that cause a URL to be
         # removed from the server's /incoming queue. Lets the worker resume cleanly
         # after a connection loss: a stream that has truly ended will read offline on
@@ -65,12 +75,16 @@ class StreamWatcher:
         self.process_thread = Thread(target=self.processor, daemon=True)
         self.watcher_threads: list[Thread] = []
 
-        # Per-key restart events. Set by the background restart-poller thread
-        # when the operator POSTs to /{key}/restart on the server, and read by
-        # the watcher (via _CompositeStopEvent) so the running Worker aborts.
-        # Pre-allocated by add()/add_incoming() so tests can inject one before
-        # calling the watcher method directly.
+        # Per-key restart events. Set by the events listener (or the legacy
+        # restart-poller thread) when the operator POSTs to /{key}/restart on
+        # the server, and read by the watcher (via _CompositeStopEvent) so the
+        # running Worker aborts. Pre-allocated by add()/add_incoming() so tests
+        # can inject one before calling the watcher method directly.
         self._restart_events: dict[str, Event] = {}
+
+        # Per-key "check /incoming now" nudges, set by the events listener and
+        # consumed by watcher_incoming. Pre-allocated by add_incoming().
+        self._incoming_events: dict[str, Event] = {}
 
     def add(self, key: str, urls: list[str]):
         """Creates a watcher for this key.
@@ -95,6 +109,7 @@ class StreamWatcher:
             key (str): Key must match the servers key.
         """
         self._restart_events.setdefault(key, Event())
+        self._incoming_events.setdefault(key, Event())
         new_thread = Thread(target=self.watcher_incoming, args=(key,), daemon=True)
         self.watcher_threads.append(new_thread)
         self.storage.create_paths(key)
@@ -109,6 +124,9 @@ class StreamWatcher:
 
         self.ready_event.wait()
         logger.info("system is in a ready state. Starting threads")
+        if self.events_enabled:
+            keys = sorted(self._restart_events.keys())
+            Thread(target=self._events_listener, args=(keys,), daemon=True).start()
         for thread in self.watcher_threads:
             thread.start()
             # need to make sure all threads are not in sync.
@@ -142,7 +160,8 @@ class StreamWatcher:
         restart_event = self._restart_events.setdefault(key, Event())
         composite_stop = _CompositeStopEvent(self.stop_event, restart_event)
         worker = Worker(key, self.processing_queue, composite_stop)
-        Thread(target=self._restart_poller, args=(key, restart_event), daemon=True).start()
+        if not self.events_enabled:
+            Thread(target=self._restart_poller, args=(key, restart_event), daemon=True).start()
 
         last_stream_id = ""
         next_url_checks: dict[str, float] = dict.fromkeys(urls, 0.0)
@@ -231,9 +250,15 @@ class StreamWatcher:
         """
         logger.info(f"[{key}][watcher_incoming] starting thread")
         restart_event = self._restart_events.setdefault(key, Event())
+        incoming_event = self._incoming_events.setdefault(key, Event())
         composite_stop = _CompositeStopEvent(self.stop_event, restart_event)
         worker = Worker(key, self.processing_queue, composite_stop)
-        Thread(target=self._restart_poller, args=(key, restart_event), daemon=True).start()
+        if not self.events_enabled:
+            Thread(target=self._restart_poller, args=(key, restart_event), daemon=True).start()
+
+        # With events polling the listener nudges us via incoming_event the
+        # moment a URL is queued, so the interval refresh is just a safety net.
+        incoming_interval = self.events_fallback_interval_seconds if self.events_enabled else self.incoming_poll_interval_seconds
 
         last_stream_id = ""
         # check time per URL; URLs at 0.0 are checked immediately on the next iteration.
@@ -251,17 +276,22 @@ class StreamWatcher:
                 next_incoming_poll = 0.0
                 continue
 
-            # Refresh URL list from /incoming. New URLs are checked immediately.
-            if time.time() >= next_incoming_poll:
+            # Refresh URL list from /incoming, either on a nudge from the
+            # events listener or when the interval elapses. New URLs are
+            # checked immediately.
+            if incoming_event.is_set() or time.time() >= next_incoming_poll:
+                incoming_event.clear()
                 incoming_urls = self.storage.get_incoming_urls(key)
                 for url in incoming_urls:
                     if url not in next_url_checks:
                         logger.info(f"[{key}][watcher_incoming] new incoming URL: {url}")
                         next_url_checks[url] = 0.0
                         offline_counts[url] = 0
-                next_incoming_poll = time.time() + self.incoming_poll_interval_seconds
+                next_incoming_poll = time.time() + incoming_interval
 
-            # Sleep until either a URL is due for a check or the next /incoming poll.
+            # Sleep until a URL is due for a check or the next /incoming poll.
+            # The 1s tick also bounds how long an events-listener nudge waits
+            # before the top-of-loop check picks it up.
             soonest_url_check = min(next_url_checks.values()) if next_url_checks else next_incoming_poll
             soonest = min(soonest_url_check, next_incoming_poll)
             if time.time() < soonest:
@@ -340,33 +370,82 @@ class StreamWatcher:
             self.storage.deactivate(key, last_stream_id)
         restart_event.clear()
 
-    def _restart_poller(self, key: str, restart_event: Event) -> None:
-        """Background thread: polls the server's /{key}/restart endpoint at the
-        same cadence as /incoming. When a restart is pending, sets restart_event
-        (which causes the running Worker to exit via the composite stop event)
-        and DELETEs the server-side request so it isn't re-handled. The watcher
-        main loop is responsible for clearing restart_event after it has reset
-        its local state.
+    def _check_restart(self, key: str, restart_event: Event) -> None:
+        """Single restart check + ack for one key: GETs the server's restart
+        flag and, when pending, sets restart_event (which causes the running
+        Worker to exit via the composite stop event) and DELETEs the
+        server-side request so it isn't re-handled. The watcher main loop is
+        responsible for clearing restart_event after it has reset its state.
 
-        Skips polling while restart_event is already set — that means a previous
-        request is still being handled, so we shouldn't trigger again or wipe a
-        fresh POST.
+        Skips while restart_event is already set — that means a previous
+        request is still being handled, so we shouldn't trigger again or wipe
+        a fresh POST.
+        """
+        try:
+            if not restart_event.is_set() and self.storage.is_restart_requested(key):
+                logger.info(f"[{key}][restart_poller] restart requested — aborting current stream")
+                restart_event.set()
+                self.storage.delete_restart_request(key)
+        except Exception as e:
+            logger.error(f"[{key}][restart_poller] error: {e}")
+
+    def _restart_poller(self, key: str, restart_event: Event) -> None:
+        """Legacy fallback thread (events_polling.enabled: false): polls the
+        server's /{key}/restart endpoint at the same cadence as /incoming.
+        When events polling is enabled, _events_listener performs the same
+        check the moment the server reports a restart signal instead.
         """
         interval = self.incoming_poll_interval_seconds
         logger.debug(f"[{key}][restart_poller] starting (interval={interval}s)")
         while not self.stop_event.is_set():
-            try:
-                if not restart_event.is_set() and self.storage.is_restart_requested(key):
-                    logger.info(f"[{key}][restart_poller] restart requested — aborting current stream")
-                    restart_event.set()
-                    self.storage.delete_restart_request(key)
-            except Exception as e:
-                logger.error(f"[{key}][restart_poller] error: {e}")
+            self._check_restart(key, restart_event)
             # Sleep with early-exit on stop. Event.wait returns True if the event
             # was set (i.e. shutdown), in which case we exit the poller.
             if self.stop_event.wait(interval):
                 return
         logger.debug(f"[{key}][restart_poller] stopping")
+
+    def _events_listener(self, keys: list[str]) -> None:
+        """Background thread: holds a single long-poll GET /events covering
+        every key and fans the returned flags out to the same in-process
+        signals the interval pollers use — "restart" runs a restart check +
+        ack, "incoming" nudges that key's watcher_incoming to refresh its URL
+        list. The server answers the moment a signal is posted, which is what
+        gets new-stream/restart latency down from a poll interval to ~a second.
+
+        When the long poll fails (server without /events, network error), the
+        round degrades to one legacy-cadence poll: check /restart for every
+        key and nudge every incoming watcher to refresh — exactly the old
+        interval-polling behaviour — then retry /events on the next round.
+        """
+        cursor = 0
+        logger.info(f"[events_listener] starting (keys={keys}, wait={self.events_wait_seconds}s)")
+        while not self.stop_event.is_set():
+            result = self.storage.poll_events(keys, cursor, self.events_wait_seconds)
+
+            if result is None:
+                # Degraded round: behave like the legacy interval pollers.
+                for key in keys:
+                    self._check_restart(key, self._restart_events[key])
+                for event in self._incoming_events.values():
+                    event.set()
+                if self.stop_event.wait(self.incoming_poll_interval_seconds):
+                    break
+                continue
+
+            events, cursor = result
+            for key, flags in events.items():
+                if "restart" in flags and key in self._restart_events:
+                    self._check_restart(key, self._restart_events[key])
+                if "incoming" in flags and key in self._incoming_events:
+                    self._incoming_events[key].set()
+
+            # Brief pause after a non-empty response so a flag that stays
+            # pending server-side (e.g. a restart whose ack keeps failing)
+            # can't turn this loop into a hot poll.
+            if events and self.stop_event.wait(1):
+                break
+        logger.debug("[events_listener] stopping")
 
     def processor(self):
         """

@@ -60,6 +60,13 @@ class Storage(metaclass=SingletonMeta):
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
+        # Separate session for the /events long poll, without the retry
+        # adapter: the events listener loop does its own retry/backoff, and
+        # stacked urllib3 retries on a request that is intentionally held open
+        # for ~25s would block for minutes.
+        self.longpoll_session = requests.Session()
+        self.longpoll_session.headers.update(self.__headers)
+
         self.__base_url_session = self.__base_url
 
         self.__upload_queue: queue.Queue[MediaUploadObject] = queue.Queue()
@@ -244,6 +251,49 @@ class Storage(metaclass=SingletonMeta):
                 f.write(f"[{timestamp}] {' '.join(line_text)}\n")
             storage_time = time.time() - storage_start_time
             logger.debug(f"[{key}][add_new_line][{(storage_time):.3f}] successfully wrote {line}")
+
+    def poll_events(self, keys: list[str], since: int, wait_seconds: int) -> tuple[dict[str, list[str]], int] | None:
+        """Long-polls the server's GET /events endpoint for pending worker
+        signals across all keys at once. The server holds the request open for
+        up to wait_seconds and answers as soon as a signal is posted.
+
+        Returns ({key: ["incoming" | "restart", ...]}, cursor) on success —
+        the cursor must be echoed back as `since` on the next call so already
+        reported incoming URLs aren't reported again. Returns ({}, since) when
+        nothing was pending (204), and None when the request failed or the
+        server doesn't support /events, so the caller can fall back to legacy
+        interval polling.
+        """
+        if not self.__enable_request:
+            return None
+
+        start_time = time.time()
+        try:
+            response = self.longpoll_session.get(
+                f"{self.__base_url_session}/events",
+                params={"channels": ",".join(keys), "since": since, "wait": wait_seconds},
+                timeout=(5, wait_seconds + 10),
+            )
+            elapsed = time.time() - start_time
+            if response.status_code == 200:
+                body = response.json()
+                events = body.get("events", {}) or {}
+                logger.debug(f"[poll_events][{elapsed:.3f}] received events: {events}")
+                return events, int(body.get("cursor", since))
+            if response.status_code == 204:
+                return {}, since
+            if response.status_code == 403:
+                logger.error(f"[poll_events][{elapsed:.3f}] 403 forbidden — check apiKey in config")
+            elif response.status_code == 404:
+                logger.error(
+                    f"[poll_events][{elapsed:.3f}] 404 not found — server does not support /events; falling back to interval polling"
+                )
+            else:
+                logger.warning(f"[poll_events][{elapsed:.3f}] unexpected response: {response.status_code} {response.text}")
+        except requests.RequestException as e:
+            logger.error(f"[poll_events] request error: {e}")
+
+        return None
 
     def get_incoming_urls(self, key: str) -> list[str]:
         """Fetches the list of pending stream URLs from the server's /incoming queue.
