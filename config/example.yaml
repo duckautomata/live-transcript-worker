@@ -86,8 +86,9 @@ server:
     # LiveSegmentWorker to catch up at the live edge.
     lfs_gap_seconds: 600
 
-    # If yt-dlp produces no new fragments for this long, we assume the stream has ended
-    # (or yt-dlp is wedged) and terminate it so the worker can exit cleanly.
+    # If yt-dlp produces no new fragments (DASH worker) or segments (LiveSegmentWorker
+    # and TwitchLFSWorker) for this long, we assume the stream has ended (or yt-dlp is
+    # wedged) and terminate it so the worker can exit cleanly.
     ytdlp_seconds: 180
 
 transcription:

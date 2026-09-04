@@ -148,6 +148,9 @@ class Worker:
         if self.twitch_lfs_worker.segments_produced == 0:
             # LFS captured nothing Fall back to LiveSegmentWorker now instead
             # of dropping the stream for a full poll cycle. Skip during shutdown.
+            # A fall-behind that tripped before the first segment must not leak
+            # into the next stream's routing either.
+            self.twitch_lfs_worker.is_slow = False
             if not self.stop_event.is_set():
                 logger.warning(f"[{self.key}][Worker] TwitchLFSWorker produced no segments, falling back to LiveSegmentWorker")
                 self.live_segment_worker.start(info)

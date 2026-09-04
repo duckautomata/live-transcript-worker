@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import logging
@@ -5,7 +6,7 @@ import os
 import re
 import subprocess
 import time
-from typing import Literal
+from typing import Literal, TextIO
 
 import av
 
@@ -16,6 +17,39 @@ logger = logging.getLogger(__name__)
 
 
 class StreamHelper:
+    # Soft preferences passed to every yt-dlp download as `-S`. Every worker ends
+    # up running ffmpeg `-c copy -f mpegts`, which only carries H.264/AAC cleanly
+    # (VP9/AV1 end up as private data, i.e. no usable video track), so H.264 and
+    # AAC are ranked above every other codec at any resolution. In between, HLS
+    # (m3u8) is ranked above DASH: for the live-edge pipeline yt-dlp's ffmpeg
+    # relays HLS as a continuous MPEG-TS in real time, while DASH tracks (YouTube
+    # exposes both at once at times) arrive with unset packet timestamps and a
+    # catch-up burst from further behind live. The protocol preference sits above
+    # the audio codec so that YouTube's HLS audio rendition, whose codec is
+    # reported as unknown, still pairs with HLS video instead of the DASH AAC track.
+    # It is a sort order, not a filter: when a platform exposes only other codecs
+    # or protocols, selection still succeeds instead of yt-dlp failing with
+    # "Requested format is not available". Under --live-from-start only DASH
+    # formats exist, so the protocol preference is inert there.
+    FORMAT_SORT = "vcodec:h264,proto:m3u8,acodec:aac"
+
+    @staticmethod
+    def ytdlp_format_args(media_type: str, to_stdout: bool) -> list[str]:
+        """The `-f`/`-S` arguments for a download. There are deliberately no
+        [codec] filters in the selector: which codecs win is decided by
+        FORMAT_SORT, and a format whose codec is unknown can still be selected.
+
+        For video the selector is yt-dlp's own default for the output kind:
+        `b/bv+ba` when streaming to stdout (one muxed format when the platform has
+        it, e.g. Twitch and YouTube's legacy HLS renditions, otherwise best video
+        + best audio muxed by yt-dlp's ffmpeg) and `bv*+ba/b` for files (separate
+        tracks, as the DASH fragment worker expects). Audio-only is `ba/b`.
+        """
+        if media_type != Media.VIDEO:
+            return ["-f", "ba/b", "-S", StreamHelper.FORMAT_SORT]
+        selector = "b/bv+ba" if to_stdout else "bv*+ba/b"
+        return ["-f", selector, "-S", StreamHelper.FORMAT_SORT]
+
     @staticmethod
     def ytdlp_auth_args(url: str, purpose: Literal["check", "download"] = "download") -> list[str]:
         """
@@ -55,6 +89,50 @@ class StreamHelper:
         return re.sub(pattern, "", title).strip()
 
     @staticmethod
+    def trim_log_file(path: str, max_bytes: int = 1_048_576, keep_bytes: int = 262_144) -> None:
+        """Keeps an append-only debug log bounded: once it grows past max_bytes only
+        the trailing keep_bytes are kept, behind a marker line. A missing or
+        unreadable file is a no-op."""
+        with contextlib.suppress(OSError):
+            if os.path.getsize(path) <= max_bytes:
+                return
+            with open(path, "rb") as f:
+                f.seek(-keep_bytes, os.SEEK_END)
+                tail = f.read()
+            with open(path, "wb") as f:
+                f.write(b"--- truncated earlier history ---\n")
+                f.write(tail)
+
+    @staticmethod
+    def open_process_log(path: str, name: str, stream_id: str) -> TextIO:
+        """Opens (append mode) the persistent per-key log that a child process's
+        output is redirected to, trims it so it stays bounded, and stamps a run
+        header. The caller hands the file to Popen and then closes its own copy;
+        the child keeps writing through its inherited fd. Raises OSError if the
+        file cannot be opened."""
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        StreamHelper.trim_log_file(path)
+        # The handle is deliberately returned open: the caller passes it to Popen and closes it.
+        log_file = open(path, "a", encoding="utf-8")  # noqa: SIM115
+        log_file.write(f"\n--- {name} started at {time.strftime('%Y-%m-%d %H:%M:%S')} (stream: {stream_id}) ---\n")
+        log_file.flush()
+        return log_file
+
+    @staticmethod
+    def describe_codecs(data: bytes) -> str:
+        """Short summary of the streams in a media buffer, e.g. 'video=h264, audio=aac'.
+        Meant for a one-off log line; never raises."""
+        try:
+            with io.BytesIO(data) as buffer, av.open(buffer, mode="r") as container:
+                parts = []
+                for stream in container.streams:
+                    codec_context = getattr(stream, "codec_context", None)
+                    parts.append(f"{stream.type}={getattr(codec_context, 'name', None) or 'unknown'}")
+                return ", ".join(parts) if parts else "no streams"
+        except Exception as e:
+            return f"unreadable ({e})"
+
+    @staticmethod
     def _dump_stream_stats_debug(key: str, url: str, returncode: int | None, stdout: str, stderr: str) -> None:
         """Appends the raw yt-dlp metadata response (or error output) to
         tmp/{key}/stream_stats.log for debugging. The URL is included inline
@@ -68,19 +146,7 @@ class StreamHelper:
             key_dir = os.path.join(project_root_dir, "tmp", key)
             os.makedirs(key_dir, exist_ok=True)
             debug_path = os.path.join(key_dir, "stream_stats.log")
-
-            max_bytes = 1_048_576
-            keep_bytes = 262_144
-            try:
-                if os.path.getsize(debug_path) > max_bytes:
-                    with open(debug_path, "rb") as f:
-                        f.seek(-keep_bytes, os.SEEK_END)
-                        tail = f.read()
-                    with open(debug_path, "wb") as f:
-                        f.write(b"--- truncated earlier history ---\n")
-                        f.write(tail)
-            except OSError:
-                pass
+            StreamHelper.trim_log_file(debug_path)
 
             with open(debug_path, "a", encoding="utf-8") as f:
                 f.write(f"\n--- yt-dlp -j response at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")

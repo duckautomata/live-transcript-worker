@@ -67,6 +67,22 @@ def test_lfs_no_segments_falls_back_without_persisting_id(worker):
     worker._write_lfs_stream_id.assert_not_called()
 
 
+def test_lfs_fall_behind_before_first_segment_does_not_leak_into_next_stream(worker):
+    """A stream caught just under lfs_gap_seconds can trip the fall-behind check
+    before its first segment: is_slow=True with 0 segments. That flag must be
+    cleared, or the next stream on this key would be mis-routed to the live edge
+    after a healthy LFS run."""
+    _lfs_captures(worker, segments=0, is_slow=True)
+    worker._start_twitch(_twitch_info("1"))
+    assert worker.live_segment_worker.start.call_count == 1  # the no-segments fallback
+
+    _lfs_captures(worker, segments=3)
+    worker._start_twitch(_twitch_info("2"))
+
+    assert worker.twitch_lfs_worker.is_slow is False
+    assert worker.live_segment_worker.start.call_count == 1  # no spurious live-edge run
+
+
 def test_lfs_no_segments_does_not_fall_back_during_shutdown(worker):
     worker.stop_event.is_set.return_value = True
 
@@ -95,6 +111,57 @@ def test_restart_on_same_stream_id_uses_live_segment(worker, mocker):
 
     worker.live_segment_worker.start.assert_called_once_with(info)
     worker.twitch_lfs_worker.start.assert_not_called()
+
+
+@pytest.fixture
+def routing_worker(worker, mocker):
+    """The `worker` fixture plus a stubbed Config, so Worker.start() itself can be
+    driven (it reads live_from_start / use_dash_for_youtube from the config)."""
+    config = mocker.patch("live_transcript_worker.worker.Config")
+    config.get_streamer_config.return_value = {}
+    config.get_server_config.return_value = {}
+    worker.dash_worker = MagicMock()
+    worker.dash_worker.is_slow = False
+    return worker, config
+
+
+def test_start_routes_twitch_url_to_twitch_lfs(routing_worker):
+    """With the default config (live_from_start: true) a Twitch stream that is
+    caught near its start must reach TwitchLFSWorker, not the live-edge worker."""
+    worker, _config = routing_worker
+    _lfs_captures(worker, segments=3)
+    info = _twitch_info()
+
+    worker.start(info)
+
+    worker.twitch_lfs_worker.start.assert_called_once()
+    assert worker.twitch_lfs_worker.start.call_args.args[0] is info
+    worker.live_segment_worker.start.assert_not_called()
+    worker.dash_worker.start.assert_not_called()
+
+
+def test_start_routes_twitch_url_to_live_segment_when_live_from_start_disabled(routing_worker):
+    worker, config = routing_worker
+    config.get_streamer_config.return_value = {"live_from_start": False}
+    info = _twitch_info()
+
+    worker.start(info)
+
+    worker.live_segment_worker.start.assert_called_once_with(info)
+    worker.twitch_lfs_worker.start.assert_not_called()
+
+
+def test_start_routes_youtube_by_use_dash_setting(routing_worker):
+    worker, config = routing_worker
+    info = StreamInfoObject(url="https://www.youtube.com/watch?v=abc", key="key", stream_id="abc", start_time="1000")
+
+    worker.start(info)
+    worker.live_segment_worker.start.assert_called_once_with(info)
+    worker.dash_worker.start.assert_not_called()
+
+    config.get_server_config.return_value = {"use_dash_for_youtube": True}
+    worker.start(info)
+    worker.dash_worker.start.assert_called_once_with(info)
 
 
 def test_gap_too_large_uses_live_segment_and_persists_id(worker, mocker):

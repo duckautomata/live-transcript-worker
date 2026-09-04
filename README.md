@@ -127,7 +127,17 @@ If you wish to create more configuration files (example: dev.yaml), then you can
 
 ### Debugging/Logging
 
-Logging is set up for the entire program, and everything should be logged. The console will print info and higher logs (everything but debug). Every log is written to `tmp/_logs/app.log`, which persists across restarts. To keep disk usage bounded on long-running servers, the file is rotated once it reaches 1 MB: the 50 most recent rotated files are kept as `app.log.1` (newest) through `app.log.50` (oldest), and anything older is deleted. Each run is bracketed by `SERVER START` and `SERVER STOP` log lines, so search for those to find where the server restarted. In the event of an error, check these log files to see what went wrong.
+Logging is set up for the entire program, and everything should be logged. The console will print info and higher logs (everything but debug). Every log is written to `tmp/_logs/app.log`, which persists across restarts. To keep disk usage bounded on long-running servers, the file is rotated once it reaches 5 MB: the 50 most recent rotated files are kept as `app.log.1` (newest) through `app.log.50` (oldest), and anything older is deleted. Each run is bracketed by `SERVER START` and `SERVER STOP` log lines, so search for those to find where the server restarted. In the event of an error, check these log files to see what went wrong.
+
+The output of the external tools (yt-dlp and ffmpeg) is not in `app.log`. It goes to per-streamer files under `tmp/{key}/`, each run stamped with a header line, so when a worker exits without producing anything the reason is on disk:
+
+- `live_segment.log`: LiveSegmentWorker. The exact yt-dlp and ffmpeg command lines, the status lines, warnings and errors of both processes, and a footer with their exit codes and the number of segments produced.
+- `twitch_lfs.log`: TwitchLFSWorker, same layout. A channel with VODs disabled shows up here as yt-dlp's "there are no formats that can be downloaded from the start" (the worker then falls back to LiveSegmentWorker).
+- `ytdlp.log`: yt-dlp output for the DASH (YouTube `--live-from-start`) worker.
+- `ffmpeg_dash.log`: ffmpeg output for failed DASH fragment merges.
+- `stream_stats.log`: the raw `yt-dlp -j` responses from stream polling, useful when a stream is not detected as live.
+
+These files are trimmed to their most recent ~256 KB once they grow past 1 MB.
 
 ### Updating Packages
 ```bash

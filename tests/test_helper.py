@@ -1,9 +1,12 @@
+import os
 from unittest.mock import MagicMock
 
 import pytest
 
 from live_transcript_worker.custom_types import Media
 from live_transcript_worker.helper import StreamHelper
+
+AUDIO_DIR = os.path.join(os.path.dirname(__file__), "audio")
 
 
 @pytest.fixture(autouse=True)
@@ -275,6 +278,86 @@ def test_get_media_type(mocker):
 
     # Twitch does not override
     assert StreamHelper.get_media_type("http://twitch.tv", "key") == Media.VIDEO
+
+
+def test_ytdlp_format_args_prefer_h264_aac_without_codec_filters():
+    """Regression for "Requested format is not available": no [codec] filters
+    anywhere, the H.264/AAC preference is a sort order only."""
+    sort = ["-S", "vcodec:h264,proto:m3u8,acodec:aac"]
+    assert StreamHelper.ytdlp_format_args(Media.VIDEO, to_stdout=True) == ["-f", "b/bv+ba", *sort]
+    assert StreamHelper.ytdlp_format_args(Media.VIDEO, to_stdout=False) == ["-f", "bv*+ba/b", *sort]
+    for media_type in (Media.AUDIO, Media.NONE):
+        assert StreamHelper.ytdlp_format_args(media_type, to_stdout=True) == ["-f", "ba/b", *sort]
+        assert StreamHelper.ytdlp_format_args(media_type, to_stdout=False) == ["-f", "ba/b", *sort]
+    for args in (StreamHelper.ytdlp_format_args(Media.VIDEO, True), StreamHelper.ytdlp_format_args(Media.AUDIO, False)):
+        assert "[" not in args[args.index("-f") + 1]
+
+
+def test_trim_log_file_keeps_tail_once_over_limit(tmp_path):
+    path = tmp_path / "x.log"
+    original = b"".join(f"line {i:04d}\n".encode() for i in range(100))
+    path.write_bytes(original)
+
+    StreamHelper.trim_log_file(str(path), max_bytes=500, keep_bytes=100)
+
+    data = path.read_bytes()
+    assert data.startswith(b"--- truncated earlier history ---\n")
+    assert data.endswith(original[-100:])
+    assert len(data) < 500
+
+
+def test_trim_log_file_noop_when_small_or_missing(tmp_path):
+    path = tmp_path / "small.log"
+    path.write_bytes(b"short\n")
+
+    StreamHelper.trim_log_file(str(path), max_bytes=500, keep_bytes=100)
+    assert path.read_bytes() == b"short\n"
+
+    # Missing file must not raise.
+    StreamHelper.trim_log_file(str(tmp_path / "missing.log"))
+
+
+def test_open_process_log_creates_dir_and_stamps_header(tmp_path):
+    path = tmp_path / "key" / "live_segment.log"
+
+    with StreamHelper.open_process_log(str(path), "LiveSegmentWorker", "abc123") as log_file:
+        assert not log_file.closed
+        log_file.write("child output\n")
+
+    text = path.read_text()
+    assert "--- LiveSegmentWorker started at " in text
+    assert "(stream: abc123) ---\nchild output\n" in text
+
+    # A second run appends after the first.
+    with StreamHelper.open_process_log(str(path), "LiveSegmentWorker", "def456"):
+        pass
+    assert path.read_text().count("--- LiveSegmentWorker started at ") == 2
+
+
+def test_open_process_log_trims_oversized_log_before_appending(tmp_path):
+    path = tmp_path / "ytdlp.log"
+    path.write_bytes(b"x" * 1_200_000)
+
+    with StreamHelper.open_process_log(str(path), "yt-dlp (DASH)", "abc"):
+        pass
+
+    data = path.read_bytes()
+    assert data.startswith(b"--- truncated earlier history ---\n")
+    assert len(data) < 300_000
+    assert b"--- yt-dlp (DASH) started at " in data[-200:]
+
+
+def test_describe_codecs_real_media():
+    with open(os.path.join(AUDIO_DIR, "test-1.mp3"), "rb") as f:
+        summary = StreamHelper.describe_codecs(f.read())
+
+    assert summary.startswith("audio=")
+    assert "mp3" in summary
+
+
+def test_describe_codecs_never_raises():
+    assert StreamHelper.describe_codecs(b"not media at all").startswith("unreadable")
+    assert StreamHelper.describe_codecs(b"").startswith("unreadable")
 
 
 def test_get_stream_stats_none_start_time(mocker):

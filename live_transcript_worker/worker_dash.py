@@ -129,14 +129,11 @@ class DASHWorker(AbstractWorker):
         try:
             # Output template to ensure filenames are predictable: id.format_id.FragmentNumber
 
-            # Determine format selector based on media_type
-            if info.media_type == Media.VIDEO:  # noqa: SIM108
-                # FORCE H.264 (avc) and AAC (mp4a) to ensure MPEG-TS compatibility.
-                # If we allow VP9, ffmpeg -c copy -f mpegts will drop the video track or create bin_data.
-                fmt_selector = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best"
-            else:
-                # Audio only (Media.AUDIO or Media.NONE)
-                fmt_selector = "bestaudio[acodec^=mp4a]/ba/best"
+            # H.264/AAC are preferred through yt-dlp's sort order rather than hard
+            # [codec] filters (see StreamHelper.ytdlp_format_args): the merge below
+            # runs ffmpeg -c copy -f mpegts, which needs them, but a filter fails the
+            # whole download when a codec is reported as unknown.
+            format_args = StreamHelper.ytdlp_format_args(info.media_type, to_stdout=False)
 
             cmd = [
                 f"{self.ytdlp_path}",
@@ -166,17 +163,14 @@ class DASHWorker(AbstractWorker):
                 "extractor:exp=1:60",
                 "--hls-prefer-native",
                 "--hls-use-mpegts",
-                "-f",
-                fmt_selector,
+                *format_args,
                 "-o",
                 f"{fragment_dir}/%(id)s.%(format_id)s",
                 info.url,
             ]
 
             log_path = os.path.join(os.path.dirname(fragment_dir), "ytdlp.log")
-            with open(log_path, "a") as log_file:
-                log_file.write(f"\n--- yt-dlp started at {time.strftime('%Y-%m-%d %H:%M:%S')} (stream: {info.stream_id}) ---\n")
-                log_file.flush()
+            with StreamHelper.open_process_log(log_path, "yt-dlp (DASH)", info.stream_id) as log_file:
                 process = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
             # log_file is closed in the parent here; the subprocess inherits its own fd and keeps writing
             logger.debug(
@@ -626,6 +620,7 @@ class DASHWorker(AbstractWorker):
             return False
         except subprocess.CalledProcessError as e:
             try:
+                StreamHelper.trim_log_file(log_path)
                 with open(log_path, "a") as lf:
                     lf.write(f"\n--- ffmpeg merge failed at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
                     lf.write(f"cmd: {' '.join(cmd)}\n")
