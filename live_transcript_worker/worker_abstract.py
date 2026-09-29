@@ -37,6 +37,8 @@ class AbstractWorker(ABC):
         self.stale_lfs_gap_seconds: int = stale_cfg.get("lfs_gap_seconds", 600)
         # No-new-fragment timeout after which we terminate yt-dlp.
         self.stale_ytdlp_seconds: int = stale_cfg.get("ytdlp_seconds", 180)
+        # Segments keep arriving but none has usable data for this long: restart the pipeline.
+        self.stale_unusable_seconds: int = stale_cfg.get("unusable_segment_seconds", 60)
 
         self.yt_audio_rate = 20_000
         self.ty_video_rate = 1_028_571

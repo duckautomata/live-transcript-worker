@@ -29,6 +29,8 @@ class LiveSegmentWorker(SegmentPipelineWorker):
     _SEGMENT_SUBDIR = "live_segments"
     _LOG_FILENAME = "live_segment.log"
     _VOD_ACCURATE = False
+    # Joins at the live edge, so a fresh yt-dlp/ffmpeg pair loses nothing already sent.
+    _RESTART_ON_UNUSABLE = True
 
     def _timestamp_segment(self, info: StreamInfoObject, seg_mtime: float, duration: float) -> float:
         return seg_mtime - duration - self.live_latency_seconds

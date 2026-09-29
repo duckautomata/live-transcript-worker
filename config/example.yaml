@@ -91,6 +91,12 @@ server:
     # wedged) and terminate it so the worker can exit cleanly.
     ytdlp_seconds: 180
 
+    # If segments keep arriving but none of them has usable data for this long
+    # (LiveSegmentWorker and TwitchLFSWorker), the connection is assumed broken.
+    # LiveSegmentWorker restarts yt-dlp/ffmpeg to reconnect; TwitchLFSWorker ends
+    # its run so the worker falls back to LiveSegmentWorker.
+    unusable_segment_seconds: 60
+
 transcription:
   # list of models can be found here https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L12
   model: distil-large-v3.5

@@ -441,6 +441,119 @@ def test_monitor_stall_watchdog_terminates_ytdlp(segment_worker, mocker, caplog)
     assert "No new segment in 200s" in caplog.text
 
 
+def _run_unusable_monitor(worker, mocker, durations):
+    """Drive _monitor_segments over always-ready segments with the given
+    durations (0 = no usable data), advancing a fake clock 6s per segment."""
+    clock = {"now": 1000.0}
+    mocker.patch(f"{MODULE}.time.time", side_effect=lambda: clock["now"])
+    mocker.patch(f"{MODULE}.os.path.exists", return_value=True)
+    mocker.patch(f"{MODULE}.os.remove")
+    mocker.patch(f"{MODULE}.open", mock_open(read_data=b"segment-data"), create=True)
+    mocker.patch(f"{MODULE}.os.fstat", return_value=MagicMock(st_mtime=1000.0))
+    mocker.patch(f"{MODULE}.StreamHelper.describe_codecs", return_value="video=h264, audio=aac")
+
+    def duration(_data):
+        clock["now"] += 6.0
+        return durations.pop(0)
+
+    mocker.patch(f"{MODULE}.StreamHelper.get_precise_duration", side_effect=duration)
+    worker.stop_event.is_set.side_effect = lambda: not durations
+    ytdlp_proc = MagicMock()
+    ffmpeg_proc = MagicMock()
+    ytdlp_proc.poll.return_value = None
+    ffmpeg_proc.poll.return_value = None
+
+    worker._monitor_segments(_info(), "/tmp/segdir", ytdlp_proc, ffmpeg_proc)
+    return durations
+
+
+def test_monitor_unusable_watchdog_ends_run(segment_worker, mocker, caplog):
+    """Segments keep arriving (so the stall watchdog never fires) but none is
+    usable: after stale_unusable_seconds the run ends and is flagged for restart."""
+    segment_worker.stale_unusable_seconds = 60
+
+    with caplog.at_level(logging.WARNING):
+        remaining = _run_unusable_monitor(segment_worker, mocker, [0.0] * 20)
+
+    # 6s per segment: the 11th unusable segment is the first past 60s.
+    assert len(remaining) == 9
+    assert segment_worker._unusable_stall is True
+    assert "No usable segment in 66s; ending this run." in caplog.text
+
+
+def test_monitor_unusable_watchdog_reset_by_usable_segment(segment_worker, mocker):
+    """An occasional unusable segment between good ones never trips the watchdog."""
+    segment_worker.stale_unusable_seconds = 60
+
+    remaining = _run_unusable_monitor(segment_worker, mocker, ([0.0] * 9 + [6.0]) * 3)
+
+    assert remaining == []
+    assert segment_worker._unusable_stall is False
+    assert segment_worker.queue.put.call_count == 3
+
+
+def test_start_restarts_pipeline_after_unusable_stall(segment_worker, start_env):
+    """LiveSegmentWorker relaunches yt-dlp/ffmpeg after an unusable-data stall."""
+    stalls = iter([True, False])
+
+    def monitor(*_args):
+        segment_worker._unusable_stall = next(stalls)
+
+    start_env["monitor"].side_effect = monitor
+    segment_worker.stop_event.is_set.return_value = False
+
+    segment_worker.start(_info())
+
+    assert start_env["create_ytdlp"].call_count == 2
+    assert start_env["create_ffmpeg"].call_count == 2
+    assert start_env["outcome"].call_count == 2
+
+
+def test_start_does_not_restart_when_stopping(segment_worker, start_env):
+    def monitor(*_args):
+        segment_worker._unusable_stall = True
+
+    start_env["monitor"].side_effect = monitor
+    segment_worker.stop_event.is_set.return_value = True
+
+    segment_worker.start(_info())
+
+    start_env["create_ytdlp"].assert_called_once()
+
+
+def test_start_twitch_lfs_does_not_restart_after_unusable_stall(start_env, mocker):
+    """A --live-from-start relaunch would replay the stream; the LFS run just ends."""
+    from live_transcript_worker.worker_twitch_lfs import TwitchLFSWorker
+
+    lfs = TwitchLFSWorker("key", MagicMock(), MagicMock())
+    lfs.stop_event.is_set.return_value = False
+    create_ytdlp = mocker.patch.object(lfs, "_create_ytdlp_process", return_value=start_env["ytdlp"])
+    mocker.patch.object(lfs, "_create_ffmpeg_process", return_value=start_env["ffmpeg"])
+    mocker.patch.object(lfs, "_log_outcome")
+
+    def monitor(*_args):
+        lfs._unusable_stall = True
+
+    mocker.patch.object(lfs, "_monitor_segments", side_effect=monitor)
+
+    lfs.start(_info(url="https://www.twitch.tv/abc"))
+
+    create_ytdlp.assert_called_once()
+
+
+def test_log_outcome_warns_after_unusable_stall(segment_worker, mocker, caplog):
+    mocker.patch.object(segment_worker, "_append_log")
+    mocker.patch(f"{MODULE}.StreamHelper.trim_log_file")
+    segment_worker.stop_event.is_set.return_value = False
+    segment_worker.segments_produced = 5
+    segment_worker._unusable_stall = True
+
+    with caplog.at_level(logging.WARNING):
+        segment_worker._log_outcome(_info(), None, None, "/tmp/key/live_segment.log")
+
+    assert "Stopped after only unusable segments" in caplog.text
+
+
 def test_monitor_stops_ffmpeg_that_never_drains(segment_worker, mocker, caplog):
     """yt-dlp is gone but ffmpeg never exits: stop it after the drain timeout
     rather than spinning forever."""

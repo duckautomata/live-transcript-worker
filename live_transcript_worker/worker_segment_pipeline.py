@@ -53,6 +53,10 @@ class SegmentPipelineWorker(AbstractWorker):
     _LOG_FILENAME = "segment_pipeline.log"  # under tmp/{key}/
     _YTDLP_EXTRA_ARGS: tuple[str, ...] = ()  # e.g. ("--live-from-start",)
     _VOD_ACCURATE = False  # ProcessObject.vod_accurate for queued segments
+    # Relaunch yt-dlp/ffmpeg in place when segments keep coming but none is usable
+    # for stale_unusable_seconds. Off by default: a relaunch with --live-from-start
+    # would replay the stream from the beginning. When off, the run just ends.
+    _RESTART_ON_UNUSABLE = False
 
     # yt-dlp downloads live HLS through its own ffmpeg. These args keep that
     # ffmpeg's warnings and errors (the actual reason a download dies: HTTP 403,
@@ -78,6 +82,8 @@ class SegmentPipelineWorker(AbstractWorker):
 
     # Per-run outcome, reset at the top of start().
     segments_produced: int = 0
+    # Set by the monitor when it ended the run because no segment was usable.
+    _unusable_stall: bool = False
 
     # ------------------------------------------------------------------
     # Subclass hooks
@@ -110,6 +116,15 @@ class SegmentPipelineWorker(AbstractWorker):
         self.is_slow = False
         self._begin_run(info)
 
+        while True:
+            self._unusable_stall = False
+            self._run(info)
+            if not (self._unusable_stall and self._RESTART_ON_UNUSABLE) or self.stop_event.is_set():
+                return
+            logger.warning(f"[{info.key}][{self._NAME}] Restarting yt-dlp/ffmpeg to reconnect.")
+
+    def _run(self, info: StreamInfoObject) -> None:
+        """One yt-dlp | ffmpeg pipeline, from spawn to cleanup."""
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         key_dir = os.path.join(project_root, "tmp", info.key)
         segment_dir = os.path.join(key_dir, self._SEGMENT_SUBDIR)
@@ -173,6 +188,10 @@ class SegmentPipelineWorker(AbstractWorker):
         # while yt-dlp is still alive, it is wedged (or the stream is gone without
         # yt-dlp noticing) and gets terminated so the worker can exit cleanly.
         last_segment_time = time.time()
+        # Unusable-data watchdog: segments that keep arriving reset the stall
+        # watchdog above, so a connection that only delivers empty segments needs
+        # its own clock, reset only by a segment that was actually queued.
+        last_usable_time = last_segment_time
         ytdlp_exit_time: float | None = None
 
         while not self.stop_event.is_set():
@@ -225,9 +244,15 @@ class SegmentPipelineWorker(AbstractWorker):
                     logger.debug(f"[{info.key}][{self._NAME}] Queuing segment {next_seq}. Duration: {duration:.3f}s")
                     self.queue.put(process_obj)
                     self.segments_produced += 1
+                    last_usable_time = time.time()
                     self._after_segment(info)
                 else:
                     logger.warning(f"[{info.key}][{self._NAME}] Segment {next_seq} has no usable data, skipping.")
+                    unusable_for = time.time() - last_usable_time
+                    if unusable_for > self.stale_unusable_seconds and not both_done:
+                        logger.warning(f"[{info.key}][{self._NAME}] No usable segment in {unusable_for:.0f}s; ending this run.")
+                        self._unusable_stall = True
+                        break
 
                 next_seq += 1
 
@@ -444,6 +469,8 @@ class SegmentPipelineWorker(AbstractWorker):
             logger.info(f"[{info.key}][{self._NAME}] Stopped on request ({summary}).")
         elif self.is_slow:
             logger.info(f"[{info.key}][{self._NAME}] Stopped to switch to the live edge ({summary}).")
+        elif self._unusable_stall:
+            logger.warning(f"[{info.key}][{self._NAME}] Stopped after only unusable segments ({summary}); see {log_path} for details.")
         elif self.segments_produced == 0:
             logger.warning(f"[{info.key}][{self._NAME}] Run produced no segments ({summary}); see {log_path} for details.")
         elif ytdlp_exit not in (None, 0):
