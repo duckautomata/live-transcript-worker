@@ -18,6 +18,7 @@ server:
   buffer_size_seconds: 6
 
   # YouTube only. If true, uses DASH when lfs is enabled. Else, use LiveSegmentWorker.
+  # A streamer with use_youtube_timeline: true ignores this (see below).
   use_dash_for_youtube: true
 
   # If enabled, the worker ignores each streamer's static `urls` list and
@@ -84,6 +85,8 @@ server:
 
     # In live-from-start mode, if the worker falls this far behind live, we switch to
     # LiveSegmentWorker to catch up at the live edge.
+    # YouTubeTimelineWorker catches up on missed segments from at most this far behind
+    # live (after a hiccup or a restart); further behind, it jumps to the live edge.
     lfs_gap_seconds: 600
 
     # If yt-dlp produces no new fragments (DASH worker) or segments (LiveSegmentWorker
@@ -92,9 +95,10 @@ server:
     ytdlp_seconds: 180
 
     # If segments keep arriving but none of them has usable data for this long
-    # (LiveSegmentWorker and TwitchLFSWorker), the connection is assumed broken.
-    # LiveSegmentWorker restarts yt-dlp/ffmpeg to reconnect; TwitchLFSWorker ends
-    # its run so the worker falls back to LiveSegmentWorker.
+    # (LiveSegmentWorker, TwitchLFSWorker and YouTubeTimelineWorker), the connection
+    # is assumed broken. LiveSegmentWorker restarts yt-dlp/ffmpeg to reconnect;
+    # TwitchLFSWorker ends its run so the worker falls back to LiveSegmentWorker;
+    # YouTubeTimelineWorker re-resolves the stream and reconnects.
     unusable_segment_seconds: 60
 
 transcription:
@@ -131,6 +135,13 @@ streamers:
     # If true, the timestamps are perfect and nothing is missed, but can cause issues if the stream is too far ahead to catch up.
     # If false, the timestamps will be approximated, and stuff can be missed. But does not have to catch up.
     live_from_start: true
+
+    # YouTube only. If true, this streamer's YouTube streams use YouTubeTimelineWorker:
+    # it joins at the live edge but stamps every line with YouTube's own clock, so
+    # every line is VOD-accurate (even with DVR disabled). It is used exclusively:
+    # there is no fallback to LiveSegmentWorker. Overrides live_from_start and
+    # server.use_dash_for_youtube for YouTube URLs. Twitch URLs are unaffected.
+    use_youtube_timeline: false
 
 # List of stream id's that should not be transcribed.
 # Useful for when you don't want to transcribe a 24/7 livestream

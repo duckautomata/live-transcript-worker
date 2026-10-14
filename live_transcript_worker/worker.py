@@ -12,6 +12,7 @@ from live_transcript_worker.worker_dash import DASHWorker
 from live_transcript_worker.worker_fixedbitrate import MPEGFixedBitrateWorker
 from live_transcript_worker.worker_live_segment import LiveSegmentWorker
 from live_transcript_worker.worker_twitch_lfs import TwitchLFSWorker
+from live_transcript_worker.worker_youtube_timeline import YouTubeTimelineWorker
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class Worker:
         self.dash_worker = DASHWorker(key, queue, stop_event)
         self.twitch_lfs_worker = TwitchLFSWorker(key, queue, stop_event)
         self.live_segment_worker = LiveSegmentWorker(key, queue, stop_event)
+        self.youtube_timeline_worker = YouTubeTimelineWorker(key, queue, stop_event)
 
     # ------------------------------------------------------------------
     # Twitch LFS stream-id persistence
@@ -91,14 +93,21 @@ class Worker:
     # ------------------------------------------------------------------
 
     def start(self, info: StreamInfoObject):
-        live_from_start = Config.get_streamer_config(self.key).get("live_from_start", True)
+        streamer_config = Config.get_streamer_config(self.key)
+        live_from_start = streamer_config.get("live_from_start", True)
+        use_youtube_timeline = streamer_config.get("use_youtube_timeline", False) is True
         use_dash_for_youtube = Config.get_server_config().get("use_dash_for_youtube", False)
 
         url = info.url.lower()
         is_twitch = "twitch.tv" in url
         is_youtube = "youtube.com" in url or "youtu.be" in url
 
-        if not live_from_start:
+        if is_youtube and use_youtube_timeline:
+            # Exclusive by design: every line must be VOD-accurate, so there is no
+            # fallback to LiveSegmentWorker. A failed run ends and the watcher retries.
+            logger.info(f"[{self.key}][Worker] use_youtube_timeline=true, using YouTubeTimelineWorker")
+            self.youtube_timeline_worker.start(info)
+        elif not live_from_start:
             logger.info(f"[{self.key}][Worker] live_from_start=false, using LiveSegmentWorker")
             self.live_segment_worker.start(info)
         elif is_twitch:

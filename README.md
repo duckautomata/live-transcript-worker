@@ -92,6 +92,30 @@ _Cons_
 - yt-dlp supports very few websites with the --live-from-start argument.
 - If it starts too late, it can take a while for it to catch up with live.
 
+**YouTube Timeline**
+
+YouTube only. Enabled per streamer with `use_youtube_timeline: true`. Joins at the live edge, like LiveSegmentWorker, but every line is VOD-accurate, like DASH.
+
+YouTube stamps every live segment with its own media clock (the PTS of a video segment, or the ID3 timestamp at the start of an audio segment), and that clock is the VOD timeline. The worker reads the video and audio HLS playlists that yt-dlp resolves, downloads each segment itself, pairs video and audio by sequence number, and stamps each line with `stream start time + clock of the first audio sample`. Video and audio are muxed with ffmpeg `-copyts`, so both keep the clock and stay in sync.
+
+When enabled, it is the only worker used for that streamer's YouTube URLs: it never falls back to LiveSegmentWorker, so no line is ever approximate. Twitch URLs are unaffected.
+
+How a run behaves:
+- **It stays up while the stream is live.** A frozen playlist, rejected URLs or unusable data rebuild the connection: yt-dlp re-resolves the stream, and its runs are paced and back off.
+- **It ends only when yt-dlp says the stream isn't live** (or can't be watched), or when the worker is stopped.
+- **Expiring URLs are refreshed early** without dropping the current connection.
+- **A restart picks up where the last run stopped** (`tmp/{key}/youtube_timeline_state.json`), catching up from up to `stale_threshold.lfs_gap_seconds` behind live.
+- **A video segment that doesn't arrive leaves a gap in the video only.** Audio is never held up.
+
+_Pros_
+- VOD-accurate timestamps from the live edge. Works when the streamer has DVR disabled.
+- Missing part of the stream (an outage, a reconnect) loses only those lines; later lines still carry their own clock, so nothing drifts.
+- Audio and video stay in sync.
+
+_Cons_
+- YouTube only, and only while YouTube serves HLS for live streams. The transport is isolated in `youtube_timeline_source.py` so a SABR source can be added when yt-dlp supports it.
+- Starts at the live edge: whatever happened before the worker joined is not transcribed.
+
 
 ## Development
 
@@ -134,6 +158,7 @@ The output of the external tools (yt-dlp and ffmpeg) is not in `app.log`. It goe
 - `live_segment.log`: LiveSegmentWorker. The exact yt-dlp and ffmpeg command lines, the status lines, warnings and errors of both processes, and a footer with their exit codes and the number of segments produced.
 - `twitch_lfs.log`: TwitchLFSWorker, same layout. A channel with VODs disabled shows up here as yt-dlp's "there are no formats that can be downloaded from the start" (the worker then falls back to LiveSegmentWorker).
 - `ytdlp.log`: yt-dlp output for the DASH (YouTube `--live-from-start`) worker.
+- `youtube_timeline.log`: YouTubeTimelineWorker. yt-dlp's output for each URL resolution, the formats used, reconnects and their reasons, gaps in the stream, failed segment downloads or muxes, and a footer with the run's outcome.
 - `ffmpeg_dash.log`: ffmpeg output for failed DASH fragment merges.
 - `stream_stats.log`: the raw `yt-dlp -j` responses from stream polling, useful when a stream is not detected as live.
 

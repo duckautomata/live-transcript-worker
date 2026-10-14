@@ -122,6 +122,7 @@ def routing_worker(worker, mocker):
     config.get_server_config.return_value = {}
     worker.dash_worker = MagicMock()
     worker.dash_worker.is_slow = False
+    worker.youtube_timeline_worker = MagicMock()
     return worker, config
 
 
@@ -174,3 +175,63 @@ def test_gap_too_large_uses_live_segment_and_persists_id(worker, mocker):
     # Deliberate downgrade is persisted so a restart short-circuits to live-edge.
     worker._write_lfs_stream_id.assert_called_once_with("123")
     worker.twitch_lfs_worker.start.assert_not_called()
+
+
+def _youtube_info():
+    return StreamInfoObject(url="https://www.youtube.com/watch?v=abc", key="key", stream_id="abc", start_time="1000")
+
+
+@pytest.mark.parametrize(
+    "streamer_config, server_config",
+    [
+        ({"use_youtube_timeline": True}, {}),
+        ({"use_youtube_timeline": True}, {"use_dash_for_youtube": True}),
+        ({"use_youtube_timeline": True, "live_from_start": False}, {}),
+    ],
+)
+def test_youtube_timeline_is_used_exclusively_for_youtube(routing_worker, streamer_config, server_config):
+    """use_youtube_timeline wins over live_from_start and use_dash_for_youtube, and
+    never falls back: every line of the stream must be VOD-accurate."""
+    worker, config = routing_worker
+    config.get_streamer_config.return_value = streamer_config
+    config.get_server_config.return_value = server_config
+    info = _youtube_info()
+
+    worker.start(info)
+
+    worker.youtube_timeline_worker.start.assert_called_once_with(info)
+    worker.live_segment_worker.start.assert_not_called()
+    worker.dash_worker.start.assert_not_called()
+
+
+def test_youtube_timeline_does_not_fall_back_even_without_output(routing_worker):
+    worker, config = routing_worker
+    config.get_streamer_config.return_value = {"use_youtube_timeline": True}
+    worker.youtube_timeline_worker.chunks_produced = 0
+
+    worker.start(_youtube_info())
+
+    worker.live_segment_worker.start.assert_not_called()
+
+
+def test_youtube_timeline_flag_leaves_twitch_urls_alone(routing_worker):
+    worker, config = routing_worker
+    config.get_streamer_config.return_value = {"use_youtube_timeline": True}
+    _lfs_captures(worker, segments=3)
+
+    worker.start(_twitch_info())
+
+    worker.twitch_lfs_worker.start.assert_called_once()
+    worker.youtube_timeline_worker.start.assert_not_called()
+
+
+@pytest.mark.parametrize("value", [False, "true", "yes", 1, None])
+def test_youtube_timeline_needs_a_real_true(routing_worker, value):
+    """Only a YAML boolean true enables it; a quoted string or a number does not."""
+    worker, config = routing_worker
+    config.get_streamer_config.return_value = {"use_youtube_timeline": value}
+
+    worker.start(_youtube_info())
+
+    worker.youtube_timeline_worker.start.assert_not_called()
+    worker.live_segment_worker.start.assert_called_once()
