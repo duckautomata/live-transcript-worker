@@ -526,7 +526,11 @@ def sequence_url_template(segment_url: str, sequence: int) -> str | None:
     """A str.format template ('…/sq/{}/…') for fetching any sequence number
     from a YouTube segment URL, or None when the URL doesn't carry it. YouTube
     serves every segment of the current stream period by number, including ones
-    that already left the (tiny) live playlist window."""
+    that already left the (tiny) live playlist window.
+
+    The rest of the URL isn't fixed for the whole stream: YouTube can change
+    parameters mid-stream (e.g. `lmt` after an encoder change), and a URL with a
+    stale value is a 404. So templates come from the newest segment listed."""
     m = _SQ_IN_URL.search(segment_url)
     if not m or int(m.group(1)) != sequence:
         return None
@@ -545,6 +549,9 @@ class _HlsTrack:
     last_poll: float = -1e9
     retry_after: float = -1e9  # a secondary playlist that failed isn't polled again before this
     not_before: float = -1e9  # a playlist whose retry was cut short isn't requested again before this
+    # The template may no longer match YouTube's current URLs (the clock track's URLs
+    # changed, or a URL built from it got a 404): re-read the playlist before using it.
+    stale: bool = False
 
     @property
     def head(self) -> int | None:
@@ -662,6 +669,7 @@ class HlsSegmentSource(SegmentSource):
         self._backfill_404s = 0
         self._backfill_counted: int | None = None  # the sequence last counted as a backfill 404
         self._done_at: dict[tuple[str, int], float] = {}  # when each fetch finished
+        self._notes: dict[tuple[str, int], list[str]] = {}  # each fetch's last failed response, for the log
         self._missing_since: dict[str, tuple[int, str]] = {}  # track -> (first missing sequence, reason)
 
     # -- lifecycle ----------------------------------------------------------
@@ -762,13 +770,15 @@ class HlsSegmentSource(SegmentSource):
         edge_wait: float = 0.0,
         abandoned: threading.Event | None = None,
         until: float | None = None,
+        note: list[str] | None = None,
     ) -> bytes | None:
         """GET with retries. Returns the body, or None for a 404 (after waiting up
         to edge_wait for a segment at the live edge, else after one retry) or
         another permanent client error. Raises SourceExpiredError on 401/403/410,
         SourceError once transient failures outlast the retries, _Closed when
         stopped or abandoned, and _OutOfTime when a retry wait would run past
-        `until` (the caller's budget; an attempt that started runs to its own deadline)."""
+        `until` (the caller's budget; an attempt that started runs to its own deadline).
+        `note[0]` is kept up to date with the last failed response, for the log."""
         last_error = "no attempt"
         failures = 0
         not_found = 0
@@ -787,10 +797,14 @@ class HlsSegmentSource(SegmentSource):
             except _AttemptFailed as e:
                 failures += 1
                 last_error = str(e)
+                if note is not None:
+                    note[0] = last_error
                 pause(min(4.0, 0.5 * 2 ** (failures - 1)))
                 continue
             if status == 200:
                 return body
+            if note is not None:
+                note[0] = f"HTTP {status}"
             if status in (401, 403, 410):
                 raise SourceExpiredError(f"{what}: HTTP {status}")
             if status == 404:
@@ -834,20 +848,33 @@ class HlsSegmentSource(SegmentSource):
             self._target = min(10.0, max(0.5, playlist.target_duration))
         for sequence, duration, url in playlist.segments:
             state.urls[sequence] = (duration, url)
-            if state.template is None:
-                state.template = sequence_url_template(url, sequence)
+        if playlist.segments:
+            newest_sequence, _, newest_url = playlist.segments[-1]
+            template = sequence_url_template(newest_url, newest_sequence)
+            if template is not None:
+                if state.template is not None and template != state.template and name == self.clock_track:
+                    # YouTube changed its segment URLs (a new lmt, ...): the other tracks'
+                    # templates are out of date too.
+                    self.log(f"segment URLs changed at sequence {newest_sequence}; refreshing the other tracks' URLs")
+                    for other, other_state in self._tracks.items():
+                        if other != name:
+                            other_state.stale = True
+                state.template = template
+            state.stale = False
         if playlist.first_sequence is not None:
             for old in [s for s in state.urls if s < playlist.first_sequence - 600]:
                 del state.urls[old]
         if name == self.clock_track:
             self._note_staleness(playlist)
 
-    def _poll_secondary(self, name: str, until: float | None = None) -> bool:
+    def _poll_secondary(self, name: str, until: float | None = None, min_interval: float = 0.0) -> bool:
         """Polls a non-clock track's playlist without letting its failure reach
         the caller (audio must not depend on it). After a failure it isn't tried
-        again for SECONDARY_POLL_INTERVAL seconds. True if it was polled."""
+        again for SECONDARY_POLL_INTERVAL seconds, and never within min_interval of
+        the previous poll. True if it was polled."""
         state = self._tracks[name]
-        if self._monotonic() < max(state.retry_after, state.not_before):
+        now = self._monotonic()
+        if now < max(state.retry_after, state.not_before) or now - state.last_poll < min_interval:
             return False
         try:
             self._poll(name, until)
@@ -931,6 +958,7 @@ class HlsSegmentSource(SegmentSource):
         """Forgets a fetch and tells its download to stop."""
         future = self._futures.pop(key, None)
         self._done_at.pop(key, None)
+        self._notes.pop(key, None)
         event = self._abandon.pop(key, None)
         if event is not None:
             event.set()
@@ -1020,7 +1048,7 @@ class HlsSegmentSource(SegmentSource):
                 fetched = clock_result
             else:
                 future = self._futures[(name, sequence)]
-                fetched = (self._result(name, sequence, future) if future.done() else None) or _Fetched(None, "too late")
+                fetched = (self._result(name, sequence, future) if future.done() else None) or self._too_late(name, sequence)
             self._record(name, sequence, fetched, group)
         for name in self._tracks:
             self._drop((name, sequence))
@@ -1033,21 +1061,32 @@ class HlsSegmentSource(SegmentSource):
             return
         state = self._tracks[name]
         nominal, url = state.url_for(sequence)
-        if url is None and name != self.clock_track and self._poll_secondary(name, until):
-            # No template for this track: its playlist may list the sequence.
-            nominal, url = state.url_for(sequence)
+        if name != self.clock_track and sequence not in state.urls:
+            if url is None:
+                # No template for this track: its playlist may list the sequence.
+                refreshed = self._poll_secondary(name, until)
+            elif state.stale:
+                # The template may be out of date: re-read the playlist (at most once per segment).
+                refreshed = self._poll_secondary(name, until, min_interval=max(1.0, self._target))
+            else:
+                refreshed = False
+            if refreshed:
+                nominal, url = state.url_for(sequence)
         if url is None:
             future = _done_future(_Fetched(None, "no URL for it"))
         else:
             edge_wait = self.EDGE_404_WAIT_TARGETS * self._target if sequence >= head - 1 else 0.0
             abandoned = threading.Event()
             self._abandon[key] = abandoned
-            future = self._executors[name].submit(self._fetch, name, sequence, url, nominal or self._target, edge_wait, abandoned)
+            note = self._notes[key] = [""]
+            future = self._executors[name].submit(self._fetch, name, sequence, url, nominal or self._target, edge_wait, abandoned, note)
         self._futures[key] = future
         future.add_done_callback(lambda _, key=key: self._done_at.__setitem__(key, self._monotonic()))
 
-    def _fetch(self, name: str, sequence: int, url: str, nominal: float, edge_wait: float, abandoned: threading.Event) -> _Fetched:
-        data = self._download(url, f"{name} sequence {sequence}", max(8.0, 4 * self._target), edge_wait, abandoned)
+    def _fetch(
+        self, name: str, sequence: int, url: str, nominal: float, edge_wait: float, abandoned: threading.Event, note: list[str]
+    ) -> _Fetched:
+        data = self._download(url, f"{name} sequence {sequence}", max(8.0, 4 * self._target), edge_wait, abandoned, note=note)
         if data is None:
             return _Fetched(None, "not available (404)", is_404=True)
         segment = inspect_segment(name, sequence, data, nominal)
@@ -1100,12 +1139,22 @@ class HlsSegmentSource(SegmentSource):
             self._fetch_failures = 0
         return fetched
 
+    def _too_late(self, name: str, sequence: int) -> _Fetched:
+        note = self._notes.get((name, sequence), [""])[0]
+        if not note:
+            return _Fetched(None, "too late")
+        # Still retrying: say what it keeps getting (a 404 here usually means a stale URL).
+        return _Fetched(None, f"too late (still retrying after {note})", is_404=note == "HTTP 404")
+
     def _record(self, name: str, sequence: int, fetched: _Fetched, group: SegmentGroup) -> None:
         if fetched.segment is not None:
             group.segments[name] = fetched.segment
             self.consecutive_missing[name] = 0
             self._end_missing_streak(name, sequence)
             return
+        if fetched.is_404 and name != self.clock_track and sequence not in self._tracks[name].urls:
+            # A URL built from the template was refused: the template is probably stale.
+            self._tracks[name].stale = True
         self.segments_missing += 1
         self.consecutive_missing[name] = self.consecutive_missing.get(name, 0) + 1
         if name not in self._missing_since:

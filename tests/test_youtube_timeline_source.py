@@ -1,4 +1,5 @@
 import json
+import re
 from concurrent.futures import Future
 from unittest.mock import MagicMock
 
@@ -357,7 +358,7 @@ def test_create_segment_source_dispatch():
 # ----------------------------------------------------------------------
 
 SEG = audio_duration(43)
-BASE = "https://rr.googlevideo.com/videoplayback/itag/{itag}/playlist/index.m3u8/sq/{sq}/dur/1.000/file/seg.ts"
+BASE = "https://rr.googlevideo.com/videoplayback/itag/{itag}/playlist/index.m3u8/sq/{sq}/goap/lmt%3D{lmt}/dur/1.000/file/seg.ts"
 
 
 def _clock(sq):
@@ -418,6 +419,9 @@ class FakeYouTube:
         self.head = dict.fromkeys(tracks, head)
         self.ended = False
         self.window = 3
+        # YouTube's segment URLs carry an `lmt` that can change mid-stream; a URL
+        # with any other lmt is a 404. track -> [(first sequence, lmt), ...]
+        self.lmts: dict[str, list[tuple[int, str]]] = {t: [(0, "33")] for t in tracks}
         self.status: dict[str, list[int]] = {}  # url substring -> statuses to return first
         self.headers_for: dict[int, dict] = {}
         self.raise_for: dict[str, list[Exception]] = {}
@@ -437,11 +441,18 @@ class FakeYouTube:
     def playlist_url(self, track):
         return f"https://manifest/{self.itag(track)}/index.m3u8"
 
+    def lmt_for(self, track, sq):
+        return [lmt for first, lmt in self.lmts[track] if sq >= first][-1]
+
+    def change_lmt(self, from_sequence, lmt, tracks=None):
+        for track in tracks or self.head:
+            self.lmts[track].append((from_sequence, lmt))
+
     def _playlist(self, track):
         head = self.head[track]
         lines = ["#EXTM3U", "#EXT-X-TARGETDURATION:1", f"#EXT-X-MEDIA-SEQUENCE:{head - self.window + 1}"]
         for sq in range(head - self.window + 1, head + 1):
-            lines += ["#EXTINF:1.0,", BASE.format(itag=self.itag(track), sq=sq)]
+            lines += ["#EXTINF:1.0,", BASE.format(itag=self.itag(track), sq=sq, lmt=self.lmt_for(track, sq))]
         if self.ended:
             lines.append("#EXT-X-ENDLIST")
         return "\n".join(lines) + "\n"
@@ -461,7 +472,8 @@ class FakeYouTube:
                 return FakeResponse(200, self._playlist(track).encode(), on_chunk=self.playlist_on_chunk, piece=piece)
             if f"/itag/{self.itag(track)}/" in url:
                 sq = int(url.split("/sq/")[1].split("/")[0])
-                if (track, sq) in self.missing or sq > self.head[track]:
+                lmt = re.search(r"lmt%3D(\d+)", url)
+                if (track, sq) in self.missing or sq > self.head[track] or (lmt and lmt.group(1) != self.lmt_for(track, sq)):
                     return FakeResponse(404)
                 if track in self.unreadable:
                     return FakeResponse(200, b"<html>oops</html>")
@@ -994,3 +1006,76 @@ def test_source_rate_limited_playlist_keeps_next_group_within_its_timeout():
     playlist_requests = _playlist_requests(yt, TRACK_AUDIO)
     assert src.next_group(2) is None
     assert _playlist_requests(yt, TRACK_AUDIO) - playlist_requests <= 1  # not hammering either
+
+
+# ----------------------------------------------------------------------
+# URL templates going stale (seen in production: video lost after ~7 min)
+# ----------------------------------------------------------------------
+
+
+def test_source_template_comes_from_the_newest_segment():
+    """A DVR playlist spans minutes; its oldest segments can carry an lmt from
+    before a mid-stream change. The template must follow the newest URL, or
+    every video segment fetched by number is a 404."""
+    yt = FakeYouTube(head=110)
+    yt.window = 30
+    yt.change_lmt(105, "34")
+    clock = FakeTime(yt, advance_head_every=1.0)
+    src, events, _ = _source(yt, clock=clock)
+    groups = [src.next_group(10) for _ in range(6)]
+    assert [g.sequence for g in groups] == list(range(110, 116))  # type: ignore[union-attr]
+    # 111+ aren't in the playlist read at open: built from the template, with the current lmt.
+    assert all(set(g.segments) == {TRACK_VIDEO, TRACK_AUDIO} for g in groups)  # type: ignore[union-attr]
+
+
+def test_source_follows_an_lmt_change_mid_stream():
+    """The production failure: YouTube changes lmt while the worker runs. The
+    audio playlist shows it; the video template is refreshed before it's used."""
+    yt = FakeYouTube(head=10)
+    yt.change_lmt(15, "34")
+    clock = FakeTime(yt, advance_head_every=1.0)
+    src, events, _ = _source(yt, clock=clock)
+    groups = [src.next_group(10) for _ in range(10)]
+    assert [g.sequence for g in groups] == list(range(10, 20))  # type: ignore[union-attr]
+    missing_video = [g.sequence for g in groups if TRACK_VIDEO not in g.segments]  # type: ignore[union-attr]
+    assert missing_video == []
+    assert any("segment URLs changed" in e for e in events)
+
+
+def test_source_video_404s_refresh_a_stale_template():
+    """Safety net: only the video URLs change (the audio playlist can't show it).
+    The 404s mark the template stale and the video playlist is re-read."""
+    yt = FakeYouTube(head=10)
+    yt.change_lmt(13, "34", tracks=[TRACK_VIDEO])
+    clock = FakeTime(yt, advance_head_every=1.0)
+    src, events, _ = _source(yt, clock=clock)
+    groups = [src.next_group(15) for _ in range(12)]
+    missing_video = [g.sequence for g in groups if TRACK_VIDEO not in g.segments]  # type: ignore[union-attr]
+    assert 0 < len(missing_video) <= 2  # the first refusal(s), then recovered
+    assert TRACK_VIDEO in groups[-1].segments  # type: ignore[union-attr]
+    assert any("video sequence 13" in e and "404" in e for e in events)
+
+
+def test_too_late_names_what_the_download_keeps_getting():
+    """'too late' used to hide a stream of 404s from a stale URL."""
+
+    class NotingExecutor(SyncExecutor):
+        def submit(self, fn, *args):
+            if args[0] == TRACK_VIDEO:
+                args[-1][0] = "HTTP 404"  # the fetch's note: it keeps getting 404s
+                future: Future = Future()
+                self.pending.append(future)
+                return future
+            return super().submit(fn, *args)
+
+    yt = FakeYouTube(head=10)
+    src, events, _ = _source(yt, executor=NotingExecutor())
+    group = src.next_group(10)
+    assert group is not None and set(group.segments) == {TRACK_AUDIO}
+    assert any("too late (still retrying after HTTP 404)" in e for e in events)
+    # Sequence 10's URL came from the playlist itself: a 404 there isn't a template problem.
+    assert not src._tracks[TRACK_VIDEO].stale
+    yt.head[TRACK_AUDIO] = 11  # 11 isn't in the video playlist read at open: built from the template
+    group = src.next_group(10)
+    assert group is not None and group.sequence == 11 and set(group.segments) == {TRACK_AUDIO}
+    assert src._tracks[TRACK_VIDEO].stale  # so the video playlist is re-read before the next one
