@@ -189,7 +189,7 @@ def test_resume_point_is_saved_after_each_chunk(h, tmp_path):
     h.scripts = [run_of(100, 7, 4990.0) + ["end"]]
     h.run()
     state = json.loads((tmp_path / "key" / "youtube_timeline_state.json").read_text())
-    assert state == {"stream_id": "abcdefghijk", "next_sequence": 107}
+    assert state == {"stream_id": "abcdefghijk", "next_sequence": 107, "anchor": [pytest.approx(4990.0 + 7 * SEG), h.clock.wall()]}
 
 
 def test_a_new_run_of_the_same_stream_resumes_where_the_last_one_stopped(h, mocker, tmp_path):
@@ -257,6 +257,58 @@ def test_a_clock_that_restarted_long_ago_is_not_trusted(mocker, tmp_path, caplog
     assert "doesn't count from the stream's start" in caplog.text
 
 
+def test_an_outage_longer_than_the_start_time_check_allows_stays_vod_accurate(h):
+    """Seen live: YouTube's clock, like the VOD, skips the time a stream is down,
+    so after outages start + clock falls behind now by their total length. Lines
+    after them are still exactly where the VOD has them."""
+    outage = 2000.0  # well past lfs_gap_seconds + 300 s
+    h.resolutions = [resolved(), resolved()]
+    h.scripts = [run_of(100, 7, 4990.0) + [("sleep", outage)], run_of(107, 12, 4990.0 + 7 * SEG) + ["end"]]
+    items = h.run()
+    assert [i.raw for i in items] == [b"TS:100-105", b"TS:106-111", b"TS:112-117", b"TS:118-118"]
+    assert [i.vod_accurate for i in items] == [True] * 4
+    assert items[1].audio_start_time == pytest.approx(START + 4990.0 + 6 * SEG + 0.036)
+    assert h.worker.reconnects == 1
+
+
+def test_segments_lost_in_an_outage_stay_vod_accurate(h):
+    h.resolutions = [resolved(), resolved()]
+    h.scripts = [run_of(100, 7, 4990.0) + [("sleep", 2000.0)], run_of(400, 7, 4990.0 + 300 * SEG) + ["end"]]
+    items = h.run()
+    assert all(i.vod_accurate for i in items)
+    after = next(i for i in items if i.raw.startswith(b"TS:400-"))
+    assert after.audio_start_time == pytest.approx(START + 4990.0 + 300 * SEG + 0.036)
+
+
+def test_a_clock_that_leaps_ahead_is_not_trusted(h):
+    """Continuing a timeline means never running ahead of the time that passed."""
+    h.resolutions = [resolved()]
+    h.scripts = [run_of(100, 7, 4990.0) + run_of(107, 6, 90_000.0) + ["end"]]
+    items = h.run()
+    assert [i.vod_accurate for i in items] == [True, True, False]
+
+
+def test_a_restarted_run_continues_the_last_runs_timeline(h, mocker, tmp_path):
+    """The worker restarted mid-stream, after outages the stream clock skipped:
+    its first chunk carries on exactly where the last run's ended."""
+    h.resolutions = [resolved()]
+    h.scripts = [run_of(100, 6, 4990.0) + ["end"]]
+    assert [i.vod_accurate for i in h.run()] == [True]
+    h2 = Harness(mocker, tmp_path)
+    h2.clock.wall_at_zero = h.clock.wall() + 2000.0
+    h2.resolutions = [resolved()]
+    h2.scripts = [run_of(106, 6, 4990.0 + 6 * SEG) + ["end"]]
+    items = h2.run()
+    assert [i.vod_accurate for i in items] == [True]
+    assert items[0].audio_start_time == pytest.approx(START + 4990.0 + 6 * SEG + 0.036)
+    # Not an exact continuation: checked against the start time as usual.
+    h3 = Harness(mocker, tmp_path)
+    h3.clock.wall_at_zero = h2.clock.wall() + 2000.0
+    h3.resolutions = [resolved()]
+    h3.scripts = [run_of(150, 6, 4990.0 + 50 * SEG) + ["end"]]
+    assert [i.vod_accurate for i in h3.run()] == [False]
+
+
 def test_catching_up_a_backlog_stays_vod_accurate(h):
     """Ten minutes behind (after a restart) is still the stream's own clock."""
     h.clock.wall_at_zero = START + 5000.0 + 550.0
@@ -288,6 +340,18 @@ def test_resolve_failures_back_off(h):
     h.run()
     gaps = [b - a for a, b in zip(h.resolve_calls, h.resolve_calls[1:], strict=False)]
     assert gaps[0] >= 15 and gaps[1] >= 30
+
+
+def test_resolve_backoff_stays_under_half_the_catch_up_window(h):
+    """With lfs_gap_seconds at 300, waiting 300 s between failed yt-dlp runs could
+    leave a stream that came back right after one more than 300 s behind by the
+    next, and the source would skip everything since it came back."""
+    h.worker.stale_lfs_gap_seconds = 300
+    h.resolutions = [ResolveError("got no usable formats")] * 6 + [resolved()]
+    h.scripts = [["end"]]
+    h.run()
+    gaps = [b - a for a, b in zip(h.resolve_calls, h.resolve_calls[1:], strict=False)]
+    assert gaps == pytest.approx([15, 30, 60, 120, 150, 150], abs=1)
 
 
 def test_unsupported_is_logged_once_and_retried_rarely(h, caplog):

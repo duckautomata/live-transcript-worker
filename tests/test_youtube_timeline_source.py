@@ -30,6 +30,7 @@ from live_transcript_worker.youtube_timeline_source import (
     parse_resolved,
     resolve_stream,
     sequence_url_template,
+    url_changes,
     watch_url,
 )
 from tests.timeline_fixtures import audio_duration, audio_segment, ts_filler_packet, video_segment
@@ -104,6 +105,16 @@ def test_sequence_url_template():
     # The sequence in the URL must match the playlist's, or the template could fetch the wrong segment.
     assert sequence_url_template(url, 8093) is None
     assert sequence_url_template("https://host/seg-1.ts", 1) is None
+
+
+def test_url_changes_names_the_changed_parts():
+    base = "https://rr3.googlevideo.com/videoplayback/id/x.1/itag/234/sq/{}/goap/lmt%3D33/dur/2.000/file/seg.ts"
+    assert url_changes(base, base.replace("lmt%3D33", "lmt%3D34")) == "goap: lmt%3D33 -> lmt%3D34"
+    both = base.replace("lmt%3D33", "lmt%3D34").replace("2.000", "1.712")
+    assert url_changes(base, both) == "goap: lmt%3D33 -> lmt%3D34, dur: 2.000 -> 1.712"
+    assert url_changes(base, base + "/extra") == "a different path layout"
+    many = "/".join(f"k{i}/v{i}" for i in range(5))
+    assert url_changes(many, many.replace("/v", "/w")) == "k0: v0 -> w0, k1: v1 -> w1, k2: v2 -> w2 and 2 more"
 
 
 def test_sequence_url_template_escapes_braces():
@@ -1039,7 +1050,7 @@ def test_source_follows_an_lmt_change_mid_stream():
     assert [g.sequence for g in groups] == list(range(10, 20))  # type: ignore[union-attr]
     missing_video = [g.sequence for g in groups if TRACK_VIDEO not in g.segments]  # type: ignore[union-attr]
     assert missing_video == []
-    assert any("segment URLs changed" in e for e in events)
+    assert any("segment URLs changed at sequence 15 (goap: lmt%3D33 -> lmt%3D34)" in e for e in events)
 
 
 def test_source_video_404s_refresh_a_stale_template():
@@ -1056,13 +1067,45 @@ def test_source_video_404s_refresh_a_stale_template():
     assert any("video sequence 13" in e and "404" in e for e in events)
 
 
+@pytest.mark.parametrize(
+    ("progress", "reason"),
+    [
+        ({}, "too late (its download hadn't started)"),
+        ({"started": True}, "too late (no response after 2.0s)"),
+        ({"started": True, "responded": True, "received": 150 * 1024}, "too late (150 KiB received in 2.0s)"),
+    ],
+)
+def test_too_late_says_how_far_the_download_got(progress, reason):
+    """Tells YouTube holding a segment it doesn't have yet (no response) apart
+    from a slow transfer or a download that never got a thread."""
+
+    clock = FakeTime()
+
+    class StuckExecutor(SyncExecutor):
+        def submit(self, fn, *args):
+            if args[0] == TRACK_VIDEO:
+                # The download is stuck at this point until the grace period (2 s here) is over.
+                for field, value in progress.items():
+                    setattr(args[-1], field, clock.monotonic() if field == "started" else value)
+                future: Future = Future()
+                self.pending.append(future)
+                return future
+            return super().submit(fn, *args)
+
+    yt = FakeYouTube(head=10)
+    src, events, _ = _source(yt, executor=StuckExecutor(), clock=clock)
+    group = src.next_group(10)
+    assert group is not None and set(group.segments) == {TRACK_AUDIO}
+    assert any(e == f"video sequence 10: {reason}" for e in events), events
+
+
 def test_too_late_names_what_the_download_keeps_getting():
     """'too late' used to hide a stream of 404s from a stale URL."""
 
     class NotingExecutor(SyncExecutor):
         def submit(self, fn, *args):
             if args[0] == TRACK_VIDEO:
-                args[-1][0] = "HTTP 404"  # the fetch's note: it keeps getting 404s
+                args[-1].error = "HTTP 404"  # the fetch's progress: it keeps getting 404s
                 future: Future = Future()
                 self.pending.append(future)
                 return future

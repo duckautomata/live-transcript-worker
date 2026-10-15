@@ -2,6 +2,7 @@ import contextlib
 import dataclasses
 import json
 import logging
+import math
 import os
 import shutil
 import tempfile
@@ -120,7 +121,9 @@ class YouTubeTimelineWorker(AbstractWorker):
     _IDLE_RECONNECT_SECONDS = 30.0
     # yt-dlp never runs more often than this...
     _MIN_RESOLVE_INTERVAL_SECONDS = 15.0
-    # ...and backs off like this while it fails or reconnects bring nothing usable.
+    # ...and backs off like this while it fails or reconnects bring nothing usable, but never
+    # past half of lfs_gap_seconds: a stream that comes back from an outage right after a failed
+    # attempt would otherwise be further behind than that by the next one, and get skipped.
     _BACKOFF_SECONDS = (15.0, 30.0, 60.0, 120.0, 300.0)
     # yt-dlp offered nothing readable (e.g. SABR-only): ask again this rarely.
     _UNSUPPORTED_RETRY_SECONDS = 600.0
@@ -136,6 +139,8 @@ class YouTubeTimelineWorker(AbstractWorker):
     _CLOCK_AHEAD_TOLERANCE_SECONDS = 900.0
     # ...or this much earlier on top of the catch-up window (delivery delay).
     _CLOCK_BEHIND_TOLERANCE_SECONDS = 300.0
+    # A chunk starting within this of where the last VOD-accurate one ended continues its timeline.
+    _CONTINUITY_TOLERANCE_SECONDS = 2.0
     # Used only when the stream's start time is unknown: delay between a frame and its arrival.
     _ASSUMED_DELIVERY_SECONDS = 2.0
     # Repeated warnings of one kind are logged at most this often.
@@ -180,6 +185,9 @@ class YouTubeTimelineWorker(AbstractWorker):
         self._last_track_reconnect = -1e9
         self._unsupported_reason: str | None = None
         self._last_trim = -1e9
+        # Where the last VOD-accurate chunk ended: (clock, wall time it was queued, whether it
+        # came from the state file). Chunks continuing that timeline stay VOD-accurate.
+        self._anchor: tuple[float, float, bool] | None = None
 
     # ------------------------------------------------------------------
     # Run
@@ -241,6 +249,7 @@ class YouTubeTimelineWorker(AbstractWorker):
                 ):
                     if assembler is not None:
                         self._flush(info, assembler)
+                        self._anchor = None  # a different clock: nothing to continue
                     assembler = self._new_assembler(source)
                 self._vod_offset = source.vod_offset
 
@@ -270,6 +279,7 @@ class YouTubeTimelineWorker(AbstractWorker):
                     self._event(f"the stream's numbering restarted ({outcome.reason}); following the new one", logging.WARNING)
                     self._flush(info, assembler)
                     assembler = None
+                    self._anchor = None
                     resume = 0
                     pending = current
                     self.reconnects += 1
@@ -447,6 +457,7 @@ class YouTubeTimelineWorker(AbstractWorker):
 
     def _backoff(self) -> None:
         delay = self._BACKOFF_SECONDS[min(self._backoff_step, len(self._BACKOFF_SECONDS) - 1)]
+        delay = min(delay, max(self._MIN_RESOLVE_INTERVAL_SECONDS, self.stale_lfs_gap_seconds / 2))
         self._backoff_step += 1
         self._next_resolve_at = max(self._next_resolve_at, self._monotonic() + delay)
 
@@ -492,7 +503,7 @@ class YouTubeTimelineWorker(AbstractWorker):
             return False
 
         now = self._wallclock()
-        vod_accurate = self._clock_trusted(chunk, now)
+        vod_accurate = self._vod_accurate(chunk, now)
         if vod_accurate:
             audio_start_time = self._stream_start_time(chunk, now) + chunk.clock + self._vod_offset
         else:
@@ -552,6 +563,36 @@ class YouTubeTimelineWorker(AbstractWorker):
             self._event(f"estimated the stream start as {self._start_time:.0f}", logging.WARNING)
         return self._start_time
 
+    def _vod_accurate(self, chunk: Chunk, now: float) -> bool:
+        """Whether a chunk's clock stamps VOD-accurate lines. A chunk that continues
+        the timeline of the last VOD-accurate one stays VOD-accurate. That matters
+        after outages: YouTube's clock (like the VOD) skips the time a stream was
+        down, so start time + clock falls behind now by their total length, which
+        the start-time check alone would sooner or later take for a restarted
+        timeline (seen live: one 8.5 min outage left it 506 s behind)."""
+        if self._continues_anchor(chunk, now) or self._clock_trusted(chunk, now):
+            self._anchor = (chunk.clock + chunk.duration, now, False)
+            return True
+        self._anchor = None
+        return False
+
+    def _continues_anchor(self, chunk: Chunk, now: float) -> bool:
+        if self._anchor is None:
+            return False
+        clock_end, queued_at, from_state = self._anchor
+        advance = chunk.clock - clock_end
+        if from_state:
+            # Another run's: only an exact continuation proves it's the same timeline.
+            return abs(advance) <= self._CONTINUITY_TOLERANCE_SECONDS
+        # The clock carries on where it stopped (an outage pauses it) or further on
+        # (segments skipped), but never back, and never further than the time since
+        # plus the backlog that was being caught up.
+        return (
+            -self._CONTINUITY_TOLERANCE_SECONDS
+            <= advance
+            <= (now - queued_at + self.stale_lfs_gap_seconds + self._CLOCK_BEHIND_TOLERANCE_SECONDS)
+        )
+
     def _clock_trusted(self, chunk: Chunk, now: float) -> bool:
         """Whether the stream's clock counts from the stream's start, i.e. start
         time + clock lands near now (minus delivery delay and any backlog being
@@ -585,6 +626,13 @@ class YouTubeTimelineWorker(AbstractWorker):
         sequence = data.get("next_sequence")
         if data.get("stream_id") != stream_id or not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
             return None
+        anchor = data.get("anchor")
+        if (
+            isinstance(anchor, list)
+            and len(anchor) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in anchor)
+        ):
+            self._anchor = (float(anchor[0]), float(anchor[1]), True)
         self._event(f"resuming this stream from sequence {sequence}")
         return sequence
 
@@ -596,8 +644,11 @@ class YouTubeTimelineWorker(AbstractWorker):
             os.makedirs(directory, exist_ok=True)
             fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
             try:
+                state: dict = {"stream_id": stream_id, "next_sequence": next_sequence}
+                if self._anchor is not None:
+                    state["anchor"] = list(self._anchor[:2])
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump({"stream_id": stream_id, "next_sequence": next_sequence}, f)
+                    json.dump(state, f)
                 os.replace(tmp_path, self._state_path)
             except BaseException:
                 with contextlib.suppress(OSError):

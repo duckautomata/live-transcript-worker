@@ -104,7 +104,8 @@ How a run behaves:
 - **It stays up while the stream is live.** A frozen playlist, rejected URLs or unusable data rebuild the connection: yt-dlp re-resolves the stream, and its runs are paced and back off.
 - **It ends only when yt-dlp says the stream isn't live** (or can't be watched), or when the worker is stopped.
 - **Expiring URLs are refreshed early** without dropping the current connection.
-- **A restart picks up where the last run stopped** (`tmp/{key}/youtube_timeline_state.json`), catching up from up to `stale_threshold.lfs_gap_seconds` behind live.
+- **A restart picks up where the last run stopped** (`tmp/{key}/youtube_timeline_state.json`), catching up from up to `stale_threshold.lfs_gap_seconds` behind live. While yt-dlp keeps failing it waits at most half of that between attempts, so a stream coming back from an outage is never skipped.
+- **Outages don't cost VOD accuracy.** YouTube's clock, like the VOD, skips the time a stream was down, so lines after an outage still land where the VOD has them. The worker keeps trusting a clock that continues the timeline it already trusted, however long the outages add up to.
 - **A video segment that doesn't arrive leaves a gap in the video only.** Audio is never held up.
 
 _Pros_

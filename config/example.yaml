@@ -86,7 +86,8 @@ server:
     # In live-from-start mode, if the worker falls this far behind live, we switch to
     # LiveSegmentWorker to catch up at the live edge.
     # YouTubeTimelineWorker catches up on missed segments from at most this far behind
-    # live (after a hiccup or a restart); further behind, it jumps to the live edge.
+    # live (after a hiccup or a restart); further behind, it jumps to the live edge. It
+    # also waits at most half of this between failed yt-dlp runs.
     lfs_gap_seconds: 600
 
     # If yt-dlp produces no new fragments (DASH worker) or segments (LiveSegmentWorker

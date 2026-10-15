@@ -540,6 +540,21 @@ def sequence_url_template(segment_url: str, sequence: int) -> str | None:
     return f"{escaped[: m.start(1)]}{{}}{escaped[m.end(1) :]}"
 
 
+def url_changes(old: str, new: str, limit: int = 3) -> str:
+    """What differs between two segment URL templates, for the log, e.g.
+    'goap: lmt%3D33 -> lmt%3D34' (YouTube paths are /key/value pairs)."""
+    old_parts, new_parts = old.split("/"), new.split("/")
+    if len(old_parts) != len(new_parts):
+        return "a different path layout"
+    changes = [
+        f"{old_parts[i - 1] + ': ' if i else ''}{old_parts[i][:40]} -> {new_parts[i][:40]}"
+        for i in range(len(old_parts))
+        if old_parts[i] != new_parts[i]
+    ]
+    more = f" and {len(changes) - limit} more" if len(changes) > limit else ""
+    return ", ".join(changes[:limit]) + more
+
+
 @dataclass
 class _HlsTrack:
     resolved: ResolvedTrack
@@ -564,6 +579,17 @@ class _HlsTrack:
         if self.template is not None:
             return None, self.template.format(sequence)
         return None, None
+
+
+@dataclass
+class _Progress:
+    """How far a segment download got, for the log when it's too late. Written by
+    the download thread, read by the source."""
+
+    started: float | None = None  # monotonic; None while it waits for a free download thread
+    responded: bool = False  # the current attempt got response headers
+    received: int = 0  # body bytes of the current attempt
+    error: str = ""  # the last failed response
 
 
 class _Closed(Exception):
@@ -653,9 +679,11 @@ class HlsSegmentSource(SegmentSource):
         self._local = threading.local()
         self._sessions: list = []
         self._sessions_lock = threading.Lock()
-        # One pool per track: audio downloads never queue behind stalled video ones.
+        # One pool per track: audio downloads never queue behind stalled video ones. A download
+        # dropped as too late keeps its thread until its response starts (up to READ_TIMEOUT);
+        # the spare threads keep the next sequences' requests from queueing behind it.
         self._executors = {
-            name: executor or ThreadPoolExecutor(max_workers=self.PREFETCH_SEQUENCES, thread_name_prefix=f"timeline-{ctx.key}-{name}")
+            name: executor or ThreadPoolExecutor(max_workers=2 * self.PREFETCH_SEQUENCES, thread_name_prefix=f"timeline-{ctx.key}-{name}")
             for name in self._tracks
         }
         self._futures: dict[tuple[str, int], Future] = {}
@@ -669,7 +697,7 @@ class HlsSegmentSource(SegmentSource):
         self._backfill_404s = 0
         self._backfill_counted: int | None = None  # the sequence last counted as a backfill 404
         self._done_at: dict[tuple[str, int], float] = {}  # when each fetch finished
-        self._notes: dict[tuple[str, int], list[str]] = {}  # each fetch's last failed response, for the log
+        self._progress: dict[tuple[str, int], _Progress] = {}  # how far each fetch got, for the log
         self._missing_since: dict[str, tuple[int, str]] = {}  # track -> (first missing sequence, reason)
 
     # -- lifecycle ----------------------------------------------------------
@@ -719,7 +747,9 @@ class HlsSegmentSource(SegmentSource):
 
     # -- HTTP -----------------------------------------------------------------
 
-    def _read_body(self, resp, deadline: float, deadline_seconds: float, abandoned: threading.Event | None) -> bytes:
+    def _read_body(
+        self, resp, deadline: float, deadline_seconds: float, abandoned: threading.Event | None, progress: _Progress | None = None
+    ) -> bytes:
         """Reads a response body piece by piece as data arrives (read1), checking
         stop and the wall-clock deadline after every piece, so a trickling
         response can't hold the source longer than the deadline. A body that
@@ -730,6 +760,8 @@ class HlsSegmentSource(SegmentSource):
         parts: list[bytes] = []
         for piece in pieces:
             parts.append(piece)
+            if progress is not None:
+                progress.received += len(piece)
             if getattr(raw, "length_remaining", None) == 0:
                 break
             if self._stopping(abandoned):
@@ -738,14 +770,20 @@ class HlsSegmentSource(SegmentSource):
                 raise _AttemptFailed(f"download slower than {deadline_seconds:.0f}s")
         return b"".join(parts)
 
-    def _get_once(self, url: str, deadline_seconds: float, abandoned: threading.Event | None = None) -> tuple[int, bytes, float | None]:
+    def _get_once(
+        self, url: str, deadline_seconds: float, abandoned: threading.Event | None = None, progress: _Progress | None = None
+    ) -> tuple[int, bytes, float | None]:
         """One GET with its body streamed under a wall-clock deadline. Returns
         (status, body, retry_after)."""
         deadline = self._monotonic() + deadline_seconds
+        if progress is not None:
+            progress.responded, progress.received = False, 0
         try:
             resp = self._session().get(url, stream=True, timeout=(self.CONNECT_TIMEOUT, self.READ_TIMEOUT))
         except requests.RequestException as e:
             raise _AttemptFailed(f"{type(e).__name__}: {e}") from e
+        if progress is not None:
+            progress.responded = True
         try:
             status = resp.status_code
             if status != 200:
@@ -755,7 +793,7 @@ class HlsSegmentSource(SegmentSource):
                     with contextlib.suppress(TypeError, ValueError):
                         retry_after = float(header)
                 return status, b"", retry_after
-            return 200, self._read_body(resp, deadline, deadline_seconds, abandoned), None
+            return 200, self._read_body(resp, deadline, deadline_seconds, abandoned, progress), None
         except (requests.RequestException, OSError) as e:
             raise _AttemptFailed(f"{type(e).__name__}: {e}") from e
         finally:
@@ -770,7 +808,7 @@ class HlsSegmentSource(SegmentSource):
         edge_wait: float = 0.0,
         abandoned: threading.Event | None = None,
         until: float | None = None,
-        note: list[str] | None = None,
+        progress: _Progress | None = None,
     ) -> bytes | None:
         """GET with retries. Returns the body, or None for a 404 (after waiting up
         to edge_wait for a segment at the live edge, else after one retry) or
@@ -778,7 +816,7 @@ class HlsSegmentSource(SegmentSource):
         SourceError once transient failures outlast the retries, _Closed when
         stopped or abandoned, and _OutOfTime when a retry wait would run past
         `until` (the caller's budget; an attempt that started runs to its own deadline).
-        `note[0]` is kept up to date with the last failed response, for the log."""
+        `progress` follows the download, for the log."""
         last_error = "no attempt"
         failures = 0
         not_found = 0
@@ -793,18 +831,18 @@ class HlsSegmentSource(SegmentSource):
             if self._stopping(abandoned):
                 raise _Closed()
             try:
-                status, body, retry_after = self._get_once(url, deadline_seconds, abandoned)
+                status, body, retry_after = self._get_once(url, deadline_seconds, abandoned, progress)
             except _AttemptFailed as e:
                 failures += 1
                 last_error = str(e)
-                if note is not None:
-                    note[0] = last_error
+                if progress is not None:
+                    progress.error = last_error
                 pause(min(4.0, 0.5 * 2 ** (failures - 1)))
                 continue
             if status == 200:
                 return body
-            if note is not None:
-                note[0] = f"HTTP {status}"
+            if progress is not None:
+                progress.error = f"HTTP {status}"
             if status in (401, 403, 410):
                 raise SourceExpiredError(f"{what}: HTTP {status}")
             if status == 404:
@@ -855,7 +893,10 @@ class HlsSegmentSource(SegmentSource):
                 if state.template is not None and template != state.template and name == self.clock_track:
                     # YouTube changed its segment URLs (a new lmt, ...): the other tracks'
                     # templates are out of date too.
-                    self.log(f"segment URLs changed at sequence {newest_sequence}; refreshing the other tracks' URLs")
+                    self.log(
+                        f"segment URLs changed at sequence {newest_sequence} ({url_changes(state.template, template)}); "
+                        "refreshing the other tracks' URLs"
+                    )
                     for other, other_state in self._tracks.items():
                         if other != name:
                             other_state.stale = True
@@ -958,7 +999,7 @@ class HlsSegmentSource(SegmentSource):
         """Forgets a fetch and tells its download to stop."""
         future = self._futures.pop(key, None)
         self._done_at.pop(key, None)
-        self._notes.pop(key, None)
+        self._progress.pop(key, None)
         event = self._abandon.pop(key, None)
         if event is not None:
             event.set()
@@ -1078,15 +1119,16 @@ class HlsSegmentSource(SegmentSource):
             edge_wait = self.EDGE_404_WAIT_TARGETS * self._target if sequence >= head - 1 else 0.0
             abandoned = threading.Event()
             self._abandon[key] = abandoned
-            note = self._notes[key] = [""]
-            future = self._executors[name].submit(self._fetch, name, sequence, url, nominal or self._target, edge_wait, abandoned, note)
+            progress = self._progress[key] = _Progress()
+            future = self._executors[name].submit(self._fetch, name, sequence, url, nominal or self._target, edge_wait, abandoned, progress)
         self._futures[key] = future
         future.add_done_callback(lambda _, key=key: self._done_at.__setitem__(key, self._monotonic()))
 
     def _fetch(
-        self, name: str, sequence: int, url: str, nominal: float, edge_wait: float, abandoned: threading.Event, note: list[str]
+        self, name: str, sequence: int, url: str, nominal: float, edge_wait: float, abandoned: threading.Event, progress: _Progress
     ) -> _Fetched:
-        data = self._download(url, f"{name} sequence {sequence}", max(8.0, 4 * self._target), edge_wait, abandoned, note=note)
+        progress.started = self._monotonic()
+        data = self._download(url, f"{name} sequence {sequence}", max(8.0, 4 * self._target), edge_wait, abandoned, progress=progress)
         if data is None:
             return _Fetched(None, "not available (404)", is_404=True)
         segment = inspect_segment(name, sequence, data, nominal)
@@ -1140,11 +1182,20 @@ class HlsSegmentSource(SegmentSource):
         return fetched
 
     def _too_late(self, name: str, sequence: int) -> _Fetched:
-        note = self._notes.get((name, sequence), [""])[0]
-        if not note:
+        """Why a segment missed its grace period: still retrying (a 404 here usually
+        means a stale URL), not started (no free download thread), no response yet
+        (YouTube holding the request until it has the segment?), or a slow transfer."""
+        progress = self._progress.get((name, sequence))
+        if progress is None:
             return _Fetched(None, "too late")
-        # Still retrying: say what it keeps getting (a 404 here usually means a stale URL).
-        return _Fetched(None, f"too late (still retrying after {note})", is_404=note == "HTTP 404")
+        if progress.error:
+            return _Fetched(None, f"too late (still retrying after {progress.error})", is_404=progress.error == "HTTP 404")
+        if progress.started is None:
+            return _Fetched(None, "too late (its download hadn't started)")
+        elapsed = self._monotonic() - progress.started
+        if not progress.responded:
+            return _Fetched(None, f"too late (no response after {elapsed:.1f}s)")
+        return _Fetched(None, f"too late ({progress.received / 1024:.0f} KiB received in {elapsed:.1f}s)")
 
     def _record(self, name: str, sequence: int, fetched: _Fetched, group: SegmentGroup) -> None:
         if fetched.segment is not None:
