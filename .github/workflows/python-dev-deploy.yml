@@ -6,6 +6,11 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      disable_cache:
+        description: "Ignore all build caches and build from scratch"
+        default: false
+        type: boolean
 
 jobs:
 
@@ -28,7 +33,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          enable-cache: true
+          # disable_cache also skips the uv cache, so dependencies are re-downloaded.
+          enable-cache: ${{ inputs.disable_cache != true }}
           cache-dependency-glob: "uv.lock"
 
       - name: Install Dependencies
@@ -129,5 +135,9 @@ jobs:
             BUILD_DATE=${{ steps.versions.outputs.date }}
             YTDLP_VERSION=${{ steps.versions.outputs.ytdlp }}
             DENO_VERSION=${{ steps.versions.outputs.deno }}
-          cache-from: type=gha
+          # disable_cache rebuilds every stage and skips the cache import, so a
+          # broken layer can't be pulled in. cache-to stays on either way, which
+          # means the from-scratch run also replaces the bad cache with a good one.
+          no-cache: ${{ inputs.disable_cache == true }}
+          cache-from: ${{ !inputs.disable_cache && 'type=gha' || '' }}
           cache-to: type=gha,mode=max
