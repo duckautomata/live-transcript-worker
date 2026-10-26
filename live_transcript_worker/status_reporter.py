@@ -2,7 +2,7 @@ import logging
 import os
 import threading
 
-import httpx
+import requests
 
 from live_transcript_worker.config import Config
 
@@ -19,8 +19,9 @@ class StatusReporter(threading.Thread):
         api_key = self.server_config.get("apiKey", "")
         self.headers = {"X-API-Key": api_key.strip()}
 
-        # Initialize persistent client
-        self.client = httpx.Client(base_url=self.base_url, headers=self.headers, timeout=10.0)
+        # Initialize persistent requests Session
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
 
     def run(self):
         if self.enable_request is False:
@@ -49,8 +50,12 @@ class StatusReporter(threading.Thread):
         payload = {"version": version, "build_time": build_time, "keys": keys}
 
         try:
-            response = self.client.post("/status", json=payload)
+            response = self.session.post(
+                f"{self.base_url}/status",
+                json=payload,
+                timeout=(5, 10),  # (connect timeout, read timeout)
+            )
             if response.status_code != 200:
                 logger.warning(f"[StatusReporter] Server returned {response.status_code}: {response.text}")
-        except httpx.RequestError as e:
+        except requests.RequestException as e:
             logger.error(f"[StatusReporter] Network error sending status: {e}")
