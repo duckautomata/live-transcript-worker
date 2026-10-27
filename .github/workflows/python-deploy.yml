@@ -106,8 +106,24 @@ jobs:
         uses: mathieudutour/github-tag-action@af99e60ce8132224b8e6ebab5023449fe256ed46 # v7.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: ${{ inputs.bump_type || 'patch' }}
+          default_bump: patch
+          # Manual runs force the chosen bump. default_bump alone loses to any
+          # conventional commit (fix: -> patch), and with no new commits since
+          # the last tag the action outputs no version at all. Empty on push.
+          force_bump: ${{ inputs.bump_type }}
           dry_run: true
+
+      - name: Verify Version
+        # Never push an image (or :latest) without a version, e.g. a push re-run
+        # on a commit that is already tagged.
+        env:
+          NEW_VERSION: ${{ steps.tag_version.outputs.new_version }}
+        run: |
+          if [ -z "$NEW_VERSION" ]; then
+            echo "::error::No new version calculated (no new commits since the last tag?). Use a manual run to force a bump."
+            exit 1
+          fi
+          echo "Next version: $NEW_VERSION"
 
       - name: Extract Docker Metadata
         id: meta
@@ -194,7 +210,9 @@ jobs:
         uses: mathieudutour/github-tag-action@af99e60ce8132224b8e6ebab5023449fe256ed46 # v7.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: ${{ inputs.bump_type || 'patch' }}
+          default_bump: patch
+          # Must match the build job so the tag equals the pushed image version.
+          force_bump: ${{ inputs.bump_type }}
 
       - name: Create GitHub Release
         if: |
