@@ -29,6 +29,8 @@ exclude-newer = "4 days"
 # Floors for sensitive transitives. These only take effect if something pulls
 # them in; they cap below-known-bad versions without forcing installation.
 constraint-dependencies = [
+    # av 19 removed av.open(metadata_errors=...), which faster-whisper 1.2.1's decode_audio still passes.
+    "av<19",
     "certifi>=2024.7.4",
     "idna>=3.7",
     "pip>=25.0",
